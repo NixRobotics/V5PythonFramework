@@ -6,5 +6,6 @@ Place following files on SDCard (local edits in VSCode will not be reflected)
 - driveproxy.py
 - inertialwrapper.py
 - pid.py
+- tracker.py
 
 main.py will be downloaded as usual.
