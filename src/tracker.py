@@ -172,7 +172,7 @@ class Tracking:
         delta_theta = theta - self.previous_theta
 
         # delta_forward and delta_strafe will be the piecewise motion of this robot in this timestop, for forward and sideways/strafe in mm
-        if (self.fwd_wheel_size <= 0.0):
+        if self.fwd_is_odom:
             delta_forward = self.fwd_wheel_size * delta_left
         else:
             delta_forward = self.fwd_wheel_size * (delta_left + delta_right) / 2.0
@@ -232,12 +232,14 @@ class Tracking:
             wait(tracker.timestep, SECONDS)
 
     @staticmethod
-    def tracker_thread(use_motors, configuration, devices, orientation):
+    def tracker_thread(configuration: Configuration, devices, orientation: Orientation):
         if len(devices) != 3:
             print("missing prequisite number of devices (3)")
             return
 
-        if (use_motors):
+        if not configuration.fwd_is_odom:
             Tracking.track_motors(devices[0], devices[1], devices[2], configuration, orientation)
         else:
             Tracking.track_odometry(devices[0], devices[1], devices[2], configuration, orientation)
+
+
