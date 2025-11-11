@@ -24,17 +24,19 @@ right_drive = MotorGroup(r1, r2)
 
 all_motors = [l1, l2, r1, r2]
 
+dt = DriveTrain(left_drive, right_drive, 317.0, 320, 320, MM, 1.0)
+
 GYRO_SCALE_FOR_READOUT = 361.0/360.0
 inertial = InertialWrapper(Ports.PORT5, GYRO_SCALE_FOR_READOUT)
 
-USING_TRACKING_WHEELS = False
+USING_TRACKING_WHEELS = True
 
 if USING_TRACKING_WHEELS:
     rotation_fwd = Rotation(Ports.PORT6, False)
     rotation_strafe = Rotation(Ports.PORT7, False)
     all_sensors = [inertial, rotation_fwd, rotation_strafe]
 
-    ODOMETRY_FWD_SIZE = 220.0
+    ODOMETRY_FWD_SIZE = 218.344
     ODOMETRY_FWD_OFFSET = 0.375 * 25.4
     ODOMETRY_FWD_GEAR_RATIO = 1.0
     ODOMETRY_STRAFE_SIZE = 160.0
@@ -44,7 +46,7 @@ if USING_TRACKING_WHEELS:
 else:
     all_sensors = [inertial]
 
-    ODOMETRY_FWD_SIZE = 320.0
+    ODOMETRY_FWD_SIZE = 317.0
     ODOMETRY_FWD_OFFSET = 0.0
     ODOMETRY_FWD_GEAR_RATIO = 1.0
     ODOMETRY_STRAFE_SIZE = 0.0
@@ -154,17 +156,37 @@ def auton2_drive_to_points(drive_train: DriveProxy, tracker: Tracking):
 def auton3_drive_to_points_long(drive_train: DriveProxy, tracker:Tracking):
     print_tracker(tracker)
 
-    x_near = 0.0
-    x_far = 2.0 * 24.0 * 25.4
+    #x_near = 0.0
+    #x_far = 2.0 * 600.0
 
-    y_left = 0.0
-    y_right = 1.0 * 24.0 * 25.4
+    #y_left = 0.0
+    #y_right = 1.0 * 600.0
+
+    #points = [
+    #    [x_far, y_left],
+    #    [x_far, y_right],
+    #    [x_near, y_right],
+    #    [x_near, y_left]
+    #]
+
+    # field tiles are 600mm across (not 18")
+    x_near = 0.0
+    x_far = 3.0 * 600.0
+
+    y_far_left = -1.5 * 600.0
+    y_mid_left = 0.0
+    y_mid_right = 2.0 * 600.0
+    y_far_right = 3.5 * 600.0
 
     points = [
-        [x_far, y_left],
-        [x_far, y_right],
-        [x_near, y_right],
-        [x_near, y_left]
+        [x_far, y_mid_left],
+        [x_far, y_mid_right],
+        [x_near, y_mid_right],
+        [x_near, y_far_left],
+        [x_far, y_far_left],
+        [x_far, y_far_right],
+        [x_near, y_far_right],
+        [x_near, y_mid_left]
     ]
 
     for point in points:
@@ -209,6 +231,9 @@ def user_control():
     print("driver control")
 
     tracker = Tracking()
+
+    #wait(1, SECONDS)
+    #dt.drive_for(FORWARD, 240.0 * 10.0, MM, 25, PERCENT)
 
     while True:
         print_tracker(tracker)
