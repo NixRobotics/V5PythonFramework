@@ -43,6 +43,7 @@ the tracking math will track the point where the forward and strafe wheels inter
 Sample transformation based on current tracked robot pose (x, y, theta) using NumPy:
 
 class SimRobot:
+
     @staticmethod
     def rotation_local_to_global(angle):
         R = np.array([
