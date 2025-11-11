@@ -56,9 +56,9 @@ the right thing based on this class.
 InertialWrapper is not compatible with VEX SmartDrive. If you want to call the VEX SmartDrive functions, you
 need to also instantiate a separate inertial sensor object, ie.
 
-inertial_for_smartdrive = Inertial(post_number)
+inertial_for_smartdrive = Inertial(port_number)
 
-For SmartDrive gyro_scale value needs to be inverted, ie:
+For SmartDrive, gyro_scale value needs to be inverted, ie:
 - If a robot overturns given a certain command such as SmartDrive.turn_for() it means the inertial sensor is
 reading a too small value, so you need to provide SmartDrive.turn_for() a larger value
 - I refer to this as the TURN gyro scale to distiguish it from the READOUT scale (TURN scale = 1.0 / READOUT scale)
