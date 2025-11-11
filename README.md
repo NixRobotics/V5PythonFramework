@@ -30,3 +30,36 @@ Tracking wheel offsets from pivot point can be calculated using simple circle fo
 - R is your tracking wheel offset
 - C is number of revolution of tracking wheel * wheel travel
 - Make sure you have calibrated tracking wheel travel
+
+VEX does not enable overload of rotation sensor sample rate in Python, so sample interval is limited to 20ms.
+Robot travelling at 1m/s will cover 2cm (20mm) in 20ms. Use your own judgement if this is acceptable or not
+for your needs and adjust robot speed accordingly
+- Linear interpolation to align rotation sensors in ime is not implemented in this version
+- Motor encoders update at 10ms
+
+# InertialWrapper Class
+
+This provides an overload for the rotation(), heading() and angle() inertial sensor calls as well as some of the
+setter functions.
+
+Not all combinations of calls are tested.
+
+Using this you can specify your gyro error directly when you create the inertial sensor object, rather than
+having to keep track of it separately:
+
+inertial = InertialWrapper(port_number, gyro_scale)
+
+The gyro_scale in this case is the READOUT gyro error, meaning the scale you need to apply to get a call such as
+rotation() to provide a value that matches the physical robot rotation. The Tracking and DriveProxy classes do
+the right thing based on this class.
+
+InertialWrapper is not compatible with VEX SmartDrive. If you want to call the VEX SmartDrive functions, you
+need to also instantiate a separate inertial sensor object, ie.
+
+inertial_for_smartdrive = Inertial(post_number)
+
+For SmartDrive gyro_scale value needs to be inverted, ie:
+- If a robot overturns given a certain command such as SmartDrive.turn_for() it means the inertial sensor is
+reading a too small value, so you need to provide SmartDrive.turn_for() a larger value
+- I refer to this as the TURN gyro scale to distiguish it from the READOUT scale (TURN scale = 1.0 / READOUT scale)
+  
