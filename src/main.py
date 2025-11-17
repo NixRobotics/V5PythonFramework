@@ -9,9 +9,11 @@
 
 # Library imports
 from vex import *
+from math import pi
 from inertialwrapper import InertialWrapper
 from driveproxy import DriveProxy
 from tracker import Tracking
+from smartdrvwrapper import SmartDriveWrapper
 
 brain=Brain()
 
@@ -21,12 +23,12 @@ left_drive = MotorGroup(l1, l2)
 r1 = Motor(Ports.PORT2, GearSetting.RATIO_18_1, False)
 r2 = Motor(Ports.PORT4, GearSetting.RATIO_18_1, False)
 right_drive = MotorGroup(r1, r2)
+DRIVETRAIN_WHEEL_SIZE = 316.0
+DRIVETRAIN_GEAR_RATIO = 1.0
 
 all_motors = [l1, l2, r1, r2]
 
-dt = DriveTrain(left_drive, right_drive, 317.0, 320, 320, MM, 1.0)
-
-GYRO_SCALE_FOR_READOUT = 361.0/360.0
+GYRO_SCALE_FOR_READOUT = 362.0/360.0
 inertial = InertialWrapper(Ports.PORT5, GYRO_SCALE_FOR_READOUT)
 
 USING_TRACKING_WHEELS = True
@@ -37,18 +39,18 @@ if USING_TRACKING_WHEELS:
     all_sensors = [inertial, rotation_fwd, rotation_strafe]
 
     ODOMETRY_FWD_SIZE = 218.344
-    ODOMETRY_FWD_OFFSET = 0.375 * 25.4
+    ODOMETRY_FWD_OFFSET = 0.0316 * 25.4
     ODOMETRY_FWD_GEAR_RATIO = 1.0
-    ODOMETRY_STRAFE_SIZE = 160.0
-    ODOMETRY_STRAFE_OFFSET = 4.5 * 25.4
+    ODOMETRY_STRAFE_SIZE = 157.38
+    ODOMETRY_STRAFE_OFFSET = 4.526 * 25.4
     ODOMETRY_STRAFE_GEAR_RATIO = 1.0
 
 else:
     all_sensors = [inertial]
 
-    ODOMETRY_FWD_SIZE = 317.0
+    ODOMETRY_FWD_SIZE = DRIVETRAIN_WHEEL_SIZE
     ODOMETRY_FWD_OFFSET = 0.0
-    ODOMETRY_FWD_GEAR_RATIO = 1.0
+    ODOMETRY_FWD_GEAR_RATIO = DRIVETRAIN_GEAR_RATIO
     ODOMETRY_STRAFE_SIZE = 0.0
     ODOMETRY_STRAFE_OFFSET = 0.0
     ODOMETRY_STRAFE_GEAR_RATIO = 0.0
@@ -154,55 +156,173 @@ def auton2_drive_to_points(drive_train: DriveProxy, tracker: Tracking):
     print_tracker(tracker)
 
 def auton3_drive_to_points_long(drive_train: DriveProxy, tracker:Tracking):
+    print("auton3_drive_to_points_long")
     print_tracker(tracker)
 
-    #x_near = 0.0
-    #x_far = 2.0 * 600.0
-
-    #y_left = 0.0
-    #y_right = 1.0 * 600.0
-
-    #points = [
-    #    [x_far, y_left],
-    #    [x_far, y_right],
-    #    [x_near, y_right],
-    #    [x_near, y_left]
-    #]
-
-    # field tiles are 600mm across (not 18")
     x_near = 0.0
-    x_far = 3.0 * 600.0
+    x_far = 2.0 * 600.0
 
-    y_far_left = -1.5 * 600.0
-    y_mid_left = 0.0
-    y_mid_right = 2.0 * 600.0
-    y_far_right = 3.5 * 600.0
+    y_left = 0.0
+    y_right = 1.0 * 600.0
 
     points = [
-        [x_far, y_mid_left],
-        [x_far, y_mid_right],
-        [x_near, y_mid_right],
-        [x_near, y_far_left],
-        [x_far, y_far_left],
-        [x_far, y_far_right],
-        [x_near, y_far_right],
-        [x_near, y_mid_left]
+        [x_far, y_left],
+        [x_far, y_right],
+        [x_near, y_right],
+        [x_near, y_left]
     ]
 
-    for point in points:
-        print("Start Drive 1", point)
-        x = point[0]
-        y = point[1]
-        distance, heading = tracker.trajectory_to_point(x, y)
-        timeout = 1.0 + distance / (drive_train.linear_speed() * 1000.0) # convert to MM/s and pad with 1 sec
-        drive_train.turn_to_heading(heading, settle_error=1.0, timeout=0.5)
-        drive_train.drive_for(FORWARD, distance, MM, heading, timeout=timeout)
-        print_tracker(tracker)
+    # field tiles are 600mm across (not 18")
+    #x_near = 0.0
+    #x_far = 3.0 * 600.0
+
+    #y_far_left = -1.5 * 600.0
+    #y_mid_left = 0.0
+    #y_mid_right = 2.0 * 600.0
+    #y_far_right = 3.5 * 600.0
+
+    #points = [
+    #    [x_far, y_mid_left],
+    #    [x_far, y_mid_right],
+    #    [x_near, y_mid_right],
+    #    [x_near, y_far_left],
+    #    [x_far, y_far_left],
+    #    [x_far, y_far_right],
+    #    [x_near, y_far_right],
+    #    [x_near, y_mid_left]
+    #]
+
+    for i in range(4):
+        for point in points:
+            print("")
+            print("----- Start Drive", i, point)
+            x = point[0]
+            y = point[1]
+            print_tracker(tracker, x, y)
+            distance, heading = tracker.trajectory_to_point(x, y)
+            timeout = 1.0 + distance / (drive_train.linear_speed() * 1000.0) # convert to MM/s and pad with 1 sec
+            drive_train.turn_to_heading(heading, settle_error=0.5, timeout=2.0)
+            drive_train.drive_for(FORWARD, distance, MM, heading, timeout=timeout)
+            wait(0.1, SECONDS)
+            print_tracker(tracker, x, y)
 
     print("Start Turn")
-    drive_train.turn_to_heading(0.0)
-    print_tracker(tracker)
+    drive_train.turn_to_heading(0.0, settle_error=0.25, timeout=2.0)
+    wait(0.1, SECONDS)
+    print_tracker(tracker, x_near, y_left)
 
+def calibration_tracking_wheels():
+
+    dt = SmartDriveWrapper(left_drive, right_drive, inertial, DRIVETRAIN_WHEEL_SIZE, 320, 320, MM, 1.0)
+
+    wait(1, SECONDS)
+
+    fwd_start = rotation_fwd.position(RotationUnits.REV)
+    side_start = rotation_strafe.position(RotationUnits.REV)
+    dt.drive_for(FORWARD, 3.0 * 600.0, MM, 25, PERCENT)
+    wait(0.5, SECONDS)
+    fwd_end = rotation_fwd.position(RotationUnits.REV)
+    side_end = rotation_strafe.position(RotationUnits.REV)
+    print(fwd_start, ",", side_start, ",", fwd_end, ",", side_end)
+
+    wait(1, SECONDS)
+
+    fwd_start = rotation_fwd.position(RotationUnits.REV)
+    side_start = rotation_strafe.position(RotationUnits.REV)
+    dt.drive_for(REVERSE, 3.0 * 600.0, MM, 25, PERCENT)
+    wait(0.5, SECONDS)
+    fwd_end = rotation_fwd.position(RotationUnits.REV)
+    side_end = rotation_strafe.position(RotationUnits.REV)
+    print(fwd_start, ",", side_start, ",", fwd_end, ",", side_end)
+
+    wait(1, SECONDS)
+
+    dt.set_turn_constant(0.7)
+
+    gyro_start = inertial.rotation()
+    smart_start = dt.rotation()
+    print(gyro_start, smart_start)
+
+    fwd_start = rotation_fwd.position(RotationUnits.REV)
+    side_start = rotation_strafe.position(RotationUnits.REV)
+    dt.turn_for(RIGHT, 180.0, DEGREES, 33, PERCENT, True)
+    dt.stop(COAST)
+    wait(0.5, SECONDS)
+    gyro_end = inertial.rotation()
+    fwd_end = rotation_fwd.position(RotationUnits.REV)
+    side_end = rotation_strafe.position(RotationUnits.REV)
+    print(gyro_start, ",", fwd_start, ",", side_start, ",", gyro_end, ",", fwd_end, ",", side_end)
+
+    wait(1, SECONDS)
+
+    gyro_start = inertial.rotation()
+    smart_start = dt.rotation()
+    print(gyro_start, smart_start)
+    
+    fwd_start = rotation_fwd.position(RotationUnits.REV)
+    side_start = rotation_strafe.position(RotationUnits.REV)
+    dt.turn_for(LEFT, 180.0, DEGREES, 33, PERCENT)
+    dt.stop(COAST)
+    wait(0.5, SECONDS)
+    gyro_end = inertial.rotation()
+    fwd_end = rotation_fwd.position(RotationUnits.REV)
+    side_end = rotation_strafe.position(RotationUnits.REV)
+    print(gyro_start, ",", fwd_start, ",", side_start, ",", gyro_end, ",", fwd_end, ",", side_end)
+
+    # -0.06780071 , 0.2414444 , 0.8654722 , 722.9219 , 0.25 , -8.321305
+    # 722.9198 , 0.25 , -8.321305 , -0.3253781 , 0.3342222 , 0.9289445
+
+# drive_speed m/s
+# circle_radius m
+def sim_circle(drive_speed, circle_radius, slip_factor):            
+    track_width = 9.5 * 25.4
+    wheel_base = 10.0 * 25.4
+    wheel_travel = (track_width**2 + wheel_base**2) * pi / track_width # m
+    wheel_circum = 320.0
+    wheel_revs_per_robot_rev = wheel_travel / wheel_circum
+    external_gear_ratio = 1.0
+
+    # drive_speed = 0.4 # m/s
+    drive_distance = 2.0 * pi * circle_radius # m
+    drive_time = drive_distance / drive_speed # m/s
+    turn_speed = (360.0 / drive_time) * (pi / 180.0) # rad/s
+    drive_command = external_gear_ratio * drive_speed / wheel_circum # motor turns / s
+    turn_command = 1.0 * external_gear_ratio * wheel_revs_per_robot_rev * slip_factor / drive_time # motor turns / s
+
+    left_rpm = (drive_command + turn_command) * 60.0 # BUGBUG
+    right_rpm = (drive_command - turn_command) * 60.0 # BUGBUG
+
+    print("Sim Circle:")
+    print("- Drive Speed {:.1f} mm/s, Radius {:.1f} mm, Slip {:.1f}".format(drive_speed, circle_radius, slip_factor))
+    print("- drive_distance {:.3f} m/s".format(drive_distance))
+    print("- turn_speed {:.3f} rad/s".format(turn_speed))
+    print("- drive_command {:.3f} rev/s".format(drive_command))
+    print("- turn_command {:.3f} rev/s".format(turn_command))
+    print("- left_rpm {:.3f} rpm".format(left_rpm))
+    print("- right_rpm {:.3f} rpm".format(right_rpm))
+
+    return left_rpm, right_rpm, drive_time
+
+def auton4_circle_drive(tracker: Tracking):
+    left_speed, right_speed, drive_time = sim_circle(250.0, 300.0, 0.44)
+    log = []
+    orientation = tracker.get_orientation()
+    log.append([orientation.x,  orientation.y, orientation.heading])
+    while drive_time > 0.0:
+        left_drive.spin(FORWARD, left_speed, RPM)
+        right_drive.spin(FORWARD, right_speed, RPM)
+        drive_time -= 0.01
+        wait(10, MSEC)
+        orientation = tracker.get_orientation()
+        log.append([orientation.x,  orientation.y, orientation.heading])
+    left_drive.stop(BRAKE)
+    right_drive.stop(BRAKE)    
+    orientation = tracker.get_orientation()
+    log.append([orientation.x,  orientation.y, orientation.heading])
+
+    for entry in log:
+        print(entry[0], ",", entry[1], ",", entry[2])
+        wait(100, MSEC)
 
 def autonomous():
     while not ROBOT_INITIALIZED:
@@ -210,7 +330,7 @@ def autonomous():
 
     print("auton")
 
-    drive_train = DriveProxy(left_drive, right_drive, inertial)
+    drive_train = DriveProxy(left_drive, right_drive, inertial, wheel_travel_mm=DRIVETRAIN_WHEEL_SIZE)
     drive_train.set_turn_constants(Kp=1.0, Ki=0.04, Kd=10.0, settle_error=0.5) # degrees
     drive_train.set_drive_constants(Kp=0.5, Ki=0.0, Kd=0.0, settle_error=5) # mm
     drive_train.set_heading_lock_constants(Kp=1.4, Ki=0.0, Kd=0.0, settle_error=0.0) # degrees
@@ -219,10 +339,13 @@ def autonomous():
     drive_train.set_drive_acceleration(10, PERCENT) # 5% per timestep
 
     tracker = Tracking()
+    tracker.enable()
 
-    # auton1_drive_straight(drive_train, tracker)
+    # calibration_tracking_wheels()
+    auton1_drive_straight(drive_train, tracker)
     # auton2_drive_to_points(drive_train, tracker)
-    auton3_drive_to_points_long(drive_train, tracker)
+    # auton3_drive_to_points_long(drive_train, tracker)
+    # auton4_circle_drive(tracker)
 
 def user_control():
     while not ROBOT_INITIALIZED:
@@ -231,13 +354,11 @@ def user_control():
     print("driver control")
 
     tracker = Tracking()
-
-    #wait(1, SECONDS)
-    #dt.drive_for(FORWARD, 240.0 * 10.0, MM, 25, PERCENT)
+    tracker.enable()
 
     while True:
         print_tracker(tracker)
-        wait(1, SECONDS)
+        wait(2, SECONDS)
 
 comp = Competition(user_control, autonomous)
 pre_autonomous()

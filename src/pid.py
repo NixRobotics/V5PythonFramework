@@ -56,6 +56,7 @@ class PID:
         self.settle_timer_limit = time_sec
 
     def set_timeout(self, time_sec):
+        print("pid:timeout: set to", time_sec)
         self.timeout_timer_limit = time_sec
         self.timeout_timer = time_sec
 

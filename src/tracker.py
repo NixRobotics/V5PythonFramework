@@ -79,6 +79,8 @@ class Tracking:
         if (self._INITIALIZED): return
         self._INITIALIZED = True
 
+        self._is_enabled = False
+
         x = 0.0 if orientation is None else orientation.x
         y = 0.0 if orientation is None else orientation.y
         heading = 0.0 if orientation is None else orientation.heading
@@ -125,6 +127,9 @@ class Tracking:
         self.side_gear_ratio = configuration.side_gear_ratio
         self.side_offset = configuration.side_offset
    
+    def enable(self, enabled = True):
+        self._is_enabled = enabled
+        
     # returns internal theta (radians) in degrees heading [0, 360)
     # theoretically this is same as calling GyroHelper.gyro_heading()
     def current_heading(self):
@@ -219,7 +224,8 @@ class Tracking:
         initial_encoders = Tracking.EncoderValues(left_drive.position(RotationUnits.REV), right_drive.position(RotationUnits.REV), 0.0, Tracking.gyro_theta(inertial)) 
         tracker = Tracking(orientation, configuration, initial_encoders, inertial)
         while(True):
-            tracker.update_location(left_drive.position(RotationUnits.REV), right_drive.position(RotationUnits.REV), 0.0, Tracking.gyro_theta(inertial))
+            if (tracker._is_enabled):
+                tracker.update_location(left_drive.position(RotationUnits.REV), right_drive.position(RotationUnits.REV), 0.0, Tracking.gyro_theta(inertial))
             wait(tracker.timestep, SECONDS)
 
     @staticmethod
@@ -228,7 +234,8 @@ class Tracking:
         initial_encoders = Tracking.EncoderValues(rotation_fwd.position(RotationUnits.REV), 0.0, rotation_side.position(RotationUnits.REV), Tracking.gyro_theta(inertial)) 
         tracker = Tracking(orientation, configuration, initial_encoders, inertial)
         while(True):
-            tracker.update_location(rotation_fwd.position(RotationUnits.REV), 0.0, rotation_side.position(RotationUnits.REV), Tracking.gyro_theta(inertial))
+            if (tracker._is_enabled):
+                tracker.update_location(rotation_fwd.position(RotationUnits.REV), 0.0, rotation_side.position(RotationUnits.REV), Tracking.gyro_theta(inertial))
             wait(tracker.timestep, SECONDS)
 
     @staticmethod

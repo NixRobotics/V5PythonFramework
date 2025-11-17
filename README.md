@@ -9,6 +9,7 @@ Place following files on SDCard (local edits in VSCode will not be reflected)
 - inertialwrapper.py
 - pid.py
 - tracker.py
+- smrtdriverwrapper.py
 
 main.py will be downloaded as usual.
 
@@ -19,6 +20,28 @@ lock, however only works reliably if robot is already pointing in more or less t
 will result if robot is too far off heading (drive speed limiting based on heading error is not implemented).
 
 Does not do perform any boomerang, look-ahead or pure-pursuit drive algorithms.
+
+# Tracking Basics
+
+For a good overview of the theory see this paper: http://thepilons.ca/wp-content/uploads/2018/10/Tracking.pdf
+
+This example does not implement this scheme directly, particularly the local to global rotation.
+
+What is not discussed adequately here is the type of motion that can be tracked. Using two tracking wheels (i.e.
+for forward and strafe/sideways) assumes that the robot turns are centered around its pivot point (point around which
+the robot turns when turning in place). This is not the geometric center of the robot and not necessarily the geometric
+center of the drivetrain wheels. When using traction wheels it will tend to be towards these.
+
+However, the pivot point will depend on the center of gravity (CoG) and the rotation speed. E.g. a robot with an
+off center CoG will likely rotate around a point towards the geometric center of the drivetrain wheels when turning
+slowing. As turn speed increases the pivot point will move towards the CoG. As the pivot point moves, the tracking
+wheel offsets would need to be updated to correctly track the motion, but of course we don't have the ability to
+detect this.
+
+The other implication of this is that we can not track motion that intentionally changes the pivot point, e.g. by
+manually rotating the robot around its back left corner. This is the kind of motion that would occur when the robot
+is blocked against a field element or the field perimeter. These kind of interations change the center of rotation
+enough that the assumptions behind the tracking equations are incorect.
 
 # Calibration
 
@@ -88,13 +111,11 @@ The gyro_scale in this case is the READOUT gyro error, meaning the scale you nee
 rotation() to provide a value that matches the physical robot rotation. The Tracking and DriveProxy classes do
 the right thing based on this class.
 
-InertialWrapper is not compatible with VEX SmartDrive. If you want to call the VEX SmartDrive functions, you
-need to also instantiate a separate inertial sensor object, ie.
+For example, if your robot turns 365.0deg when commanded to turn 360.0 it means that the gyro is reporting a
+heading that is too small. In this case the gyro_scale would be 365.0 / 360.0.
 
-inertial_for_smartdrive = Inertial(port_number)
+InertialWrapper can used with VEX SmartDrive as well, e.g
 
-For SmartDrive, gyro_scale value needs to be inverted, ie:
-- If a robot overturns given a certain command such as SmartDrive.turn_for() it means the inertial sensor is
-reading a too small value, so you need to provide SmartDrive.turn_for() a larger value
-- I refer to this as the TURN gyro scale to distiguish it from the READOUT scale (TURN scale = 1.0 / READOUT scale)
-  
+inertrial = InertialWrapper(port_number, gyro_scale)
+dt = SmartDrive(left, right, inertial, ...)
+heading = dt.heading() # heading will be provided by the override in InertialWrapper

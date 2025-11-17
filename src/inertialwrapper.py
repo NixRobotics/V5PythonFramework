@@ -7,15 +7,21 @@ class InertialWrapper(Inertial):
     def __init__(self, port, gyro_scale):
         super().__init__(port)
         self.gyro_scale = gyro_scale
+    
+    def gyro_scale_raadout(self):
+        return self.gyro_scale
 
-    def rotation(self):
-        return super().rotation(RotationUnits.DEG) * self.gyro_scale
+    def gyro_scale_turn(self):
+        return 1.0 / self.gyro_scale
 
-    def heading(self):
-        return InertialWrapper.to_heading(self.rotation())
+    def rotation(self, units = RotationUnits.DEG):
+        return super().rotation(units) * self.gyro_scale
 
-    def angle(self):
-        return InertialWrapper.to_angle(self.rotation())
+    def heading(self, units = RotationUnits.DEG):
+        return InertialWrapper.to_heading(self.rotation(units))
+
+    def angle(self, units = RotationUnits.DEG):
+        return InertialWrapper.to_angle(self.rotation(units))
     
     def set_rotation(self, value, units=RotationUnits.DEG):
         if units is not RotationUnits.DEG:
@@ -23,8 +29,10 @@ class InertialWrapper(Inertial):
         rotation = value / self.gyro_scale
         return super().set_rotation(rotation, RotationUnits.DEG)
     
-    def set_heading(self, heading):
-        angle = InertialWrapper.to_angle(heading)
+    def set_heading(self, value, units=RotationUnits.DEG):
+        if units is not RotationUnits.DEG:
+            raise NotImplementedError("InertialWrapper.set_rotation(): Units must be in degrees")
+        angle = InertialWrapper.to_angle(value)
         return self.set_rotation(angle, RotationUnits.DEG)
 
     @staticmethod
