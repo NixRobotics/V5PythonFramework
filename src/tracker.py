@@ -54,6 +54,7 @@ class Tracking:
     # this_instance will hold the singleton instance of the tracker. This is a way to have all the tracking code and the associated thread
     # as part of the same class to keep all the code together
     # The tracker_thread() is started from  pre_autonomous(), or somewhere early in the program and sets this_instance once initialized
+    _SINGLETON = False
     _THIS_INSTANCE = None
     _INITIALIZED = False
 
@@ -65,15 +66,18 @@ class Tracking:
     # @param inital_values (optional) is the initial values of the encoders used if not zero. Not that theta (heading) will be ignored at the moment
     def __new__(cls, *args, **kwargs):
         print('new')
-        if cls._THIS_INSTANCE is None:
-            cls._THIS_INSTANCE = super().__new__(cls)
-        return cls._THIS_INSTANCE
+        if (cls._SINGLETON):
+            if cls._THIS_INSTANCE is None:
+                cls._THIS_INSTANCE = super().__new__(cls)
+            return cls._THIS_INSTANCE
+        else:
+            return super().__new__(cls)
 
     def __init__(self,
+                 devices,
                  orientation: Union[Orientation, None] = None,
                  configuration: Union[Configuration, None] = None,
-                 initial_values: Union[EncoderValues, None] = None,
-                 inertial: Union[InertialWrapper, None] = None):
+                 initial_values: Union[EncoderValues, None] = None):
         print('init')
 
         if (self._INITIALIZED): return
@@ -93,7 +97,7 @@ class Tracking:
         # theta reflects the true rotation of the robot not the uncorrected gyro version
         # We also set reset the gyro reading to match our heading. The set_sensor_heading() call will apply the gyro scaling factor
         self.theta = InertialWrapper.to_angle(radians(heading))
-        self.inertial = inertial
+        self.inertial = devices[2]
         if self.inertial is None:
             raise Exception("ERROR: INERTIAL SENSOR MUST BE PRESENT ON FIRST INITIALIZATION")
         self.set_sensor_heading(heading)
@@ -116,6 +120,14 @@ class Tracking:
         self.previous_right_position = 0.0 if initial_values is None else initial_values.right # revolutions
         self.previous_side_position =  0.0 if initial_values is None else initial_values.side # revolutions
         self.previous_theta = self.theta # radians
+
+        self.this_thread = self.start_tracker(devices)
+
+    def set_initial_values(self, initial_values: EncoderValues):
+        self.previous_left_position = initial_values.left # revolutions
+        self.previous_right_position = initial_values.right # revolutions
+        self.previous_side_position = initial_values.side # revolutions
+        # self.previous_theta = initial_values.theta --- not used
 
     def set_configuration(self, configuration: Configuration):
         self.fwd_is_odom = configuration.fwd_is_odom
@@ -218,35 +230,35 @@ class Tracking:
         angle = InertialWrapper.to_angle(heading)
         self.inertial.set_rotation(angle, RotationUnits.DEG)
 
-    @staticmethod
-    def track_motors(left_drive: MotorGroup, right_drive: MotorGroup, inertial: InertialWrapper, configuration: Configuration, orientation: Orientation):
+    def track_motors(self, left_drive: MotorGroup, right_drive: MotorGroup, inertial: InertialWrapper):
         print("Tracker Using Motor Encoders")
         initial_encoders = Tracking.EncoderValues(left_drive.position(RotationUnits.REV), right_drive.position(RotationUnits.REV), 0.0, Tracking.gyro_theta(inertial)) 
-        tracker = Tracking(orientation, configuration, initial_encoders, inertial)
+        self.set_initial_values(initial_encoders)
+        # tracker = Tracking(orientation, configuration, initial_encoders, inertial)
         while(True):
-            if (tracker._is_enabled):
-                tracker.update_location(left_drive.position(RotationUnits.REV), right_drive.position(RotationUnits.REV), 0.0, Tracking.gyro_theta(inertial))
-            wait(tracker.timestep, SECONDS)
+            if (self._is_enabled):
+                self.update_location(left_drive.position(RotationUnits.REV), right_drive.position(RotationUnits.REV), 0.0, Tracking.gyro_theta(inertial))
+            wait(self.timestep, SECONDS)
 
-    @staticmethod
-    def track_odometry(rotation_fwd: Rotation, rotation_side: Rotation, inertial: InertialWrapper, configuration: Configuration, orientation: Orientation):
+    def track_odometry(self, rotation_fwd: Rotation, rotation_side: Rotation, inertial: InertialWrapper):
         print("Tracker Using Rotation Sensors")
         initial_encoders = Tracking.EncoderValues(rotation_fwd.position(RotationUnits.REV), 0.0, rotation_side.position(RotationUnits.REV), Tracking.gyro_theta(inertial)) 
-        tracker = Tracking(orientation, configuration, initial_encoders, inertial)
+        self.set_initial_values(initial_encoders)
+        # tracker = Tracking(orientation, configuration, initial_encoders, inertial)
         while(True):
-            if (tracker._is_enabled):
-                tracker.update_location(rotation_fwd.position(RotationUnits.REV), 0.0, rotation_side.position(RotationUnits.REV), Tracking.gyro_theta(inertial))
-            wait(tracker.timestep, SECONDS)
+            if (self._is_enabled):
+                self.update_location(rotation_fwd.position(RotationUnits.REV), 0.0, rotation_side.position(RotationUnits.REV), Tracking.gyro_theta(inertial))
+            wait(self.timestep, SECONDS)
 
-    @staticmethod
-    def tracker_thread(configuration: Configuration, devices, orientation: Orientation):
+    def tracker_thread(self, devices, unused):
         if len(devices) != 3:
             print("missing prequisite number of devices (3)")
             return
 
-        if not configuration.fwd_is_odom:
-            Tracking.track_motors(devices[0], devices[1], devices[2], configuration, orientation)
+        if not self.fwd_is_odom:
+            self.track_motors(devices[0], devices[1], devices[2])
         else:
-            Tracking.track_odometry(devices[0], devices[1], devices[2], configuration, orientation)
+            self.track_odometry(devices[0], devices[1], devices[2])
 
-
+    def start_tracker(self, devices):
+        return Thread(self.tracker_thread, (devices, 0))

@@ -58,7 +58,10 @@ else:
 ROBOT_INITIALIZED = False
 ROBOT_INITIALIZATION_FAILED = False
 
+tracker = None  # type: Tracking | None
+
 def initialize_tracker():
+    global tracker
     starting_location = Tracking.Orientation(0.0, 0.0, 0.0)
     tracker_configuration = Tracking.Configuration(
             fwd_is_odom=USING_TRACKING_WHEELS,
@@ -74,7 +77,7 @@ def initialize_tracker():
     else:
         tracker_devices = [left_drive, right_drive, inertial]
 
-    tracker_thread = Thread(Tracking.tracker_thread, (tracker_configuration, tracker_devices, starting_location))
+    tracker = Tracking(tracker_devices, starting_location, tracker_configuration, initial_values=None)
     # give tracker some time to get going
     wait(0.1, SECONDS)
 
@@ -324,6 +327,22 @@ def auton4_circle_drive(tracker: Tracking):
         print(entry[0], ",", entry[1], ",", entry[2])
         wait(100, MSEC)
 
+def test_concurrent(drive_train: DriveProxy, tracker: Tracking):
+    print(drive_train.turn_for(RIGHT, 90, DEGREES, wait = False))
+    while not drive_train.is_done(): wait(10, MSEC)
+    print_tracker(tracker)
+    print(drive_train.turn_for(LEFT, 90, DEGREES, wait = True))
+    print_tracker(tracker)
+    print(drive_train.drive_for(FORWARD, 50, MM, wait = False))
+    try:
+        drive_train.set_drive_velocity(10, PERCENT)
+    except:
+        print("Call to set_velocity failed")
+    while not drive_train.is_done():wait(10, MSEC)
+    print_tracker(tracker)
+    print(drive_train.drive_for(REVERSE, 50, MM, wait = True))
+    print_tracker(tracker)
+
 def autonomous():
     while not ROBOT_INITIALIZED:
         wait(10, MSEC)
@@ -338,22 +357,25 @@ def autonomous():
     drive_train.set_drive_velocity(66, PERCENT)
     drive_train.set_drive_acceleration(10, PERCENT) # 5% per timestep
 
-    tracker = Tracking()
+    if tracker is None:
+        raise RuntimeError("Tracker not initialized")
     tracker.enable()
 
     # calibration_tracking_wheels()
-    auton1_drive_straight(drive_train, tracker)
+    # auton1_drive_straight(drive_train, tracker)
     # auton2_drive_to_points(drive_train, tracker)
     # auton3_drive_to_points_long(drive_train, tracker)
     # auton4_circle_drive(tracker)
+    test_concurrent(drive_train, tracker)
+
+    print("auton done")
 
 def user_control():
     while not ROBOT_INITIALIZED:
         wait(10, MSEC)
 
-    print("driver control")
-
-    tracker = Tracking()
+    if tracker is None:
+        raise RuntimeError("Tracker not initialized")
     tracker.enable()
 
     while True:

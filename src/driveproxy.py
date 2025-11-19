@@ -38,9 +38,9 @@ class DriveProxy:
         self.heading_lock_pid_constants = DriveProxy.PIDParameters()
         self.default_timeout = 10.0 # seconds
 
-        self.left_motors = left_motors
-        self.right_motors = right_motors
-        self.motor_speed = motor_speed
+        self.left_motors = left_motors # motor group
+        self.right_motors = right_motors # motor group
+        self.motor_speed = motor_speed # RPM
         self.wheel_travel_mm = wheel_travel_mm
         self.ext_gear_ratio = ext_gear_ratio
 
@@ -50,48 +50,79 @@ class DriveProxy:
 
         self.drive_velocity = 100.0 # percent
 
+        self._worker_thread = None
+        self._command_running = False
+        self._cancel_command = False
+
+    def is_done(self):
+        return not self._command_running
+    
+    def _concurrency_check(self):
+        if self._command_running:
+            raise RuntimeError("Conncurrency check: Command already running")
+            # return False
+        return True
+
     def set_drive_velocity(self, velocity, unit):
+        self._concurrency_check()
         self.drive_velocity = velocity
         self.drive_pid_constants.max_output = velocity / 100.0
+        return True
 
     def set_drive_acceleration(self, acceleration, unit):
+        self._concurrency_check()
         self.drive_pid_constants.max_ramp = acceleration / 100.0
+        return True
 
     # settle error will be in MM, we need to convert to degree revolutions for internal use
     def calc_drive_settle_error(self, settle_error):
         return 360.0 * settle_error / (self.wheel_travel_mm * self.ext_gear_ratio)
 
     def set_drive_constants(self, Kp, Ki, Kd, settle_error):
+        self._concurrency_check()
         self.drive_pid_constants.Kp = Kp
         self.drive_pid_constants.Ki = Ki
         self.drive_pid_constants.Kd = Kd
         self.drive_pid_constants.settle_error = self.calc_drive_settle_error(settle_error)
+        return True
 
     def set_turn_velocity(self, velocity, unit):
+        self._concurrency_check()
         self.turn_pid_constants.max_output = velocity / 100.0
         self.heading_lock_pid_constants.max_output = velocity / 100.0
+        return True
 
     def set_turn_acceleration(self, acceleration, unit):
+        self._concurrency_check()
         self.turn_pid_constants.max_ramp = acceleration / 100.0
+        return True
 
     def set_turn_constants(self, Kp, Ki, Kd, settle_error):
+        self._concurrency_check()
         self.turn_pid_constants.Kp = Kp
         self.turn_pid_constants.Ki = Ki
         self.turn_pid_constants.Kd = Kd
         # degrees
         self.turn_pid_constants.settle_error = settle_error
+        return True
 
     def set_heading_lock_constants(self, Kp, Ki, Kd, settle_error):
+        self._concurrency_check()
         self.heading_lock_pid_constants.Kp = Kp
         self.heading_lock_pid_constants.Ki = Ki
         self.heading_lock_pid_constants.Kd = Kd
         self.heading_lock_pid_constants.settle_error = settle_error
+        return True
 
     def set_timeout(self, time):
+        self._concurrency_check()
         self.default_timeout = time
+        return True
 
     def set_stopping(self, mode):
+        self._concurrency_check()
         self.stop_mode = mode
+        return True
 
     # Returns approx max linear speed of robot (m/s) - useful for timeout calculations
     # If using voltage for motors, top speed will be somewhat above stated RPM of cartridge
@@ -103,16 +134,21 @@ class DriveProxy:
     # Approximate max rotational velocity of robot in deg/s
     # Using most common builds having mix of traction and omni wheels a 200RPM drive on 4" wheels should be
     # able to turn 360deg in 1 sec, so we scale this heuristic appropriately
+    # TODO: FIXME
     def rotation_speed(self):
         reference_linear_speed = 1.067 # m/s - speed of 200RPM drive using 4" wheels and 1:1 gear ratio
         reference_rotation_speed = 360.0 # deg/s
         return reference_rotation_speed * self.linear_speed() / reference_linear_speed
 
-    def turn_to_heading(self, heading, settle_error = None, timeout = None):
+    def turn_to_heading(self, heading, settle_error = None, timeout = None, wait = True):
         angle = self.inertial.calc_angle_to_heading(heading)
-        self.turn_for(RIGHT, angle, DEGREES, settle_error=settle_error, timeout=timeout)
+        return self.turn_for(RIGHT, angle, DEGREES, settle_error=settle_error, timeout=timeout, wait=wait)
 
-    def turn_for(self, direction, angle, unit, settle_error = None, timeout = None):
+    def _turn_for(self, direction, angle, unit, settle_error = None, timeout = None):
+        if unit is not RotationUnits.DEG: raise NotImplementedError("Units must be MM")
+        self._command_running = True
+        timer = Timer()
+
         turn_pid = PID(self.turn_pid_constants.Kp, self.turn_pid_constants.Ki, self.turn_pid_constants.Kd)
         turn_pid.set_output_limit(self.turn_pid_constants.max_output) # limit output to defined power
         turn_pid.set_output_ramp_limit(self.turn_pid_constants.max_ramp)
@@ -121,22 +157,40 @@ class DriveProxy:
         turn_pid.set_timeout(self.default_timeout if timeout is None else timeout)
         start_rotation = self.inertial.rotation()
         target_rotation = start_rotation + (angle if direction == TurnType.RIGHT else -angle)
-        while not turn_pid.is_done():
+        while not turn_pid.is_done() and not self._cancel_command:
             current_rotation = self.inertial.rotation()
             pid_output = turn_pid.compute(target_rotation, current_rotation)
 
-            self.spin(pid_output, -pid_output)
+            self._spin(pid_output, -pid_output)
 
             wait(turn_pid.timestep, SECONDS)
 
-        self.stop(self.stop_mode)
+        self._stop(self.stop_mode)
         print("Done Turn: ", turn_pid.get_is_settled(), turn_pid.get_is_timed_out())
 
         # for log_entry in turn_pid.log:
         #     print(log_entry[0], ",", log_entry[1], ",", log_entry[2])
         #     wait(50, MSEC)
+        self._command_running = False
+        return timer.time()
+    
+    def _turn_for_thread(self, args1, arg2, arg3, arg4, arg5):
+        self._turn_for(args1, arg2, arg3, arg4, arg5)
+    
+    def turn_for(self, direction, angle, unit, settle_error = None, timeout = None, wait = True):
+        self._concurrency_check()
+        self._command_running = True
+        if wait:
+            return self._turn_for(direction, angle, unit, settle_error, timeout)
+        else:
+            self._worker_thread = Thread(self._turn_for_thread, (direction, angle, unit, settle_error, timeout))
+            return 0
 
-    def drive_for(self, direction, distance, unit, heading = None, settle_error = None, timeout = None):
+    def _drive_for(self, direction, distance, unit, heading = None, settle_error = None, timeout = None):
+        if unit is not DistanceUnits.MM: raise NotImplementedError("Units must be DEG")
+        self._command_running = True
+        timer = Timer()
+
         drive_pid = PID(self.drive_pid_constants.Kp, self.drive_pid_constants.Ki, self.drive_pid_constants.Kd)
         drive_pid.set_output_limit(self.drive_pid_constants.max_output) # limit output to 50% power
         drive_pid.set_output_ramp_limit(self.drive_pid_constants.max_ramp)
@@ -159,7 +213,7 @@ class DriveProxy:
         target_distance_revs = 360.0 * distance / (self.wheel_travel_mm * self.ext_gear_ratio) # convert mm to wheel revolutions assuming 100mm diameter wheels
         target_position = target_distance_revs if direction == DirectionType.FORWARD else -target_distance_revs
 
-        while not drive_pid.is_done():
+        while not drive_pid.is_done() and not self._cancel_command:
             current_position = (
                 (self.left_motors.position(RotationUnits.DEG) - left_start_pos) +
                 (self.right_motors.position(RotationUnits.DEG) - right_start_pos)) / 2.0
@@ -171,22 +225,35 @@ class DriveProxy:
                 current_rotation = self.inertial.rotation()
                 turn_pid_output = turn_pid.compute(target_rotation, current_rotation)
 
-            self.spin(pid_output + turn_pid_output, pid_output - turn_pid_output)
+            self._spin(pid_output + turn_pid_output, pid_output - turn_pid_output)
 
             wait(drive_pid.timestep, SECONDS)
 
-        self.stop(self.stop_mode)
+        self._stop(self.stop_mode)
         print("Done Drive: ", drive_pid.get_is_settled(), drive_pid.get_is_timed_out())
 
         # for log_entry in drive_pid.log:
         #     print(log_entry[0], ",", log_entry[1], ",", log_entry[2])
         #     wait(50, MSEC)
+        self._command_running = False
+        return timer.time()
 
+    def _drive_for_thread(self, args1, arg2, arg3, arg4, arg5, arg6):
+        self._drive_for(args1, arg2, arg3, arg4, arg5, arg6)
+    
+    def drive_for(self, direction, distance, unit, heading = None, settle_error = None, timeout = None, wait = True):
+        self._concurrency_check()
+        self._command_running = True
+        if wait:
+            return self._drive_for(direction, distance, unit, heading, settle_error, timeout)
+        else:
+            self._worker_thread = Thread(self._drive_for_thread, (direction, distance, unit, heading, settle_error, timeout))
+            return 0
 
     def drive_to_point(self, x, y, tracker):
         pass
 
-    def spin(self, left_speed, right_speed):
+    def _spin(self, left_speed, right_speed):
         if (self.USE_VOLTAGE):
             left_voltage = self.limit(left_speed * DriveProxy.MAX_VOLTAGE, DriveProxy.MAX_VOLTAGE)
             right_voltage = self.limit(right_speed * DriveProxy.MAX_VOLTAGE, DriveProxy.MAX_VOLTAGE)
@@ -200,13 +267,26 @@ class DriveProxy:
             self.left_motors.spin(FORWARD, left_percent, PERCENT)
             self.right_motors.spin(FORWARD, right_percent, PERCENT)
 
-    def stop(self, mode):
+    def spin(self, left_speed, right_speed):
+        self._concurrency_check()
+        self._spin(left_speed, right_speed)
+        return True
+
+    def _stop(self, mode):
         # Note that setting mode to None will keep motors at their last commanded output
         if (mode is not None):
             self.left_motors.stop(mode)
             self.right_motors.stop(mode)
 
+    def stop(self, mode):
+        if (self._command_running): self._cancel_command = True
+        wait(10, MSEC)
+        self._stop(mode)
+        self._cancel_command = False
+
     def limit(self, input, limit_value):
         if (input > limit_value): return limit_value
         elif (input < -limit_value): return -limit_value
         return input
+
+# ----------------------------
