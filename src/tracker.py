@@ -1,3 +1,4 @@
+
 # Library imports
 from vex import *
 from math import sin, cos, radians, degrees, atan2, sqrt
@@ -51,28 +52,12 @@ class Tracking:
     # SIDE_OFFSET is the distance from the robot center to the side tracking wheel, forward is positive
     DEFAULT_SIDE_OFFSET = 0.0 # mm
 
-    # this_instance will hold the singleton instance of the tracker. This is a way to have all the tracking code and the associated thread
-    # as part of the same class to keep all the code together
-    # The tracker_thread() is started from  pre_autonomous(), or somewhere early in the program and sets this_instance once initialized
-    _SINGLETON = False
-    _THIS_INSTANCE = None
-    _INITIALIZED = False
-
     # Initializer
     # @param x is initial NORTH position in MM
     # @param y is initial EAST position in MM
     # @param heading is initial true heading of robot in degrees [0, 360). 0 deg is NORTH
     # @param configuration (optional) is the configuration of the wheels used for odometry
     # @param inital_values (optional) is the initial values of the encoders used if not zero. Not that theta (heading) will be ignored at the moment
-    def __new__(cls, *args, **kwargs):
-        print('new')
-        if (cls._SINGLETON):
-            if cls._THIS_INSTANCE is None:
-                cls._THIS_INSTANCE = super().__new__(cls)
-            return cls._THIS_INSTANCE
-        else:
-            return super().__new__(cls)
-
     def __init__(self,
                  devices,
                  orientation: Union[Orientation, None] = None,
@@ -80,10 +65,8 @@ class Tracking:
                  initial_values: Union[EncoderValues, None] = None):
         print('init')
 
-        if (self._INITIALIZED): return
-        self._INITIALIZED = True
-
         self._is_enabled = False
+        self._enable_resampling = False
 
         x = 0.0 if orientation is None else orientation.x
         y = 0.0 if orientation is None else orientation.y
@@ -113,7 +96,9 @@ class Tracking:
         self.side_offset = Tracking.DEFAULT_SIDE_OFFSET
         if (configuration is not None): self.set_configuration(configuration)
 
-        self.timestep = 0.01 # seconds
+        self.timer = Timer()
+        self.avg_time = 0
+        self.timestep = 0.010 # seconds
 
         # Capture initial values of encoders and store as the previous values
         self.previous_left_position = 0.0 if initial_values is None else initial_values.left # revolutions
@@ -121,13 +106,20 @@ class Tracking:
         self.previous_side_position =  0.0 if initial_values is None else initial_values.side # revolutions
         self.previous_theta = self.theta # radians
 
+        # Keep track of raw encoder values for resampling
+        self.previous_encoders = initial_values
+        self.previous_timestamps = Tracking.EncoderValues(0, 0, 0, 0)
+
         self.this_thread = self.start_tracker(devices)
 
-    def set_initial_values(self, initial_values: EncoderValues):
+    def set_initial_values(self, initial_values: EncoderValues, initial_timestamps: EncoderValues):
         self.previous_left_position = initial_values.left # revolutions
         self.previous_right_position = initial_values.right # revolutions
         self.previous_side_position = initial_values.side # revolutions
         # self.previous_theta = initial_values.theta --- not used
+
+        self.previous_encoders = initial_values
+        self.previous_timestamps = initial_timestamps
 
     def set_configuration(self, configuration: Configuration):
         self.fwd_is_odom = configuration.fwd_is_odom
@@ -141,6 +133,9 @@ class Tracking:
    
     def enable(self, enabled = True):
         self._is_enabled = enabled
+
+    def enable_resampling(self, enabled = True):
+        self._enable_resampling = enabled
         
     # returns internal theta (radians) in degrees heading [0, 360)
     # theoretically this is same as calling GyroHelper.gyro_heading()
@@ -176,8 +171,38 @@ class Tracking:
         delta_global_y = delta_local_x * sin(to_global_rotation_angle) + delta_local_y * cos(to_global_rotation_angle)
 
         return (x + delta_global_x, y + delta_global_y, theta + delta_theta)
+    
+    def linear_interp(self, s0, s1, t0, t1, t_ref):
+        if t1 == t0: return s1
+        if t0 == t_ref: return s0
+        if t1 == t_ref: return s1
+        s_new = s0 + (t_ref - t0) * ((s1 - s0) / (t1 - t0))
+        return s_new
 
-    def update_location(self, left_position, right_position, side_position, theta):
+    def resample(self, encoders: EncoderValues, timestamps: EncoderValues):
+        # We attempt to align everything to the gyro, if that does not get updated we'll just use the latest values
+        # gyro skips very infrequently so any anomolies from this should be minimal
+        if self.previous_encoders is None:
+            raise RuntimeError("Previous Encoder Values Not Set")
+        
+        left = self.linear_interp(self.previous_encoders.left, encoders.left, self.previous_timestamps.left, timestamps.left, timestamps.theta)
+        right = self.linear_interp(self.previous_encoders.right, encoders.right, self.previous_timestamps.right, timestamps.right, timestamps.theta)
+        side = self.linear_interp(self.previous_encoders.side, encoders.side, self.previous_timestamps.side, timestamps.side, timestamps.theta)
+
+        return Tracking.EncoderValues(left, right, side, encoders.theta)
+
+    def update_location(self, encoders: EncoderValues, timestamps: EncoderValues):
+        if self._enable_resampling:
+            resampled_encoders = self.resample(encoders, timestamps)
+        else:
+            resampled_encoders = encoders
+
+        # Unpack inputs
+        left_position = resampled_encoders.left
+        right_position = resampled_encoders.right
+        side_position = resampled_encoders.side
+        theta = resampled_encoders.theta
+
         # position here is the rotoation of th wheel so needs to be multiplied by any gear ratio if present
         left_position *= self.fwd_gear_ratio
         right_position *= self.fwd_gear_ratio
@@ -201,6 +226,9 @@ class Tracking:
         self.previous_right_position = right_position
         self.previous_side_position = side_position
         self.previous_theta = theta
+
+        self.previous_encoders = encoders
+        self.previous_timestamps = timestamps
     
     def get_orientation(self):
         return Tracking.Orientation(self.x, self.y, InertialWrapper.to_heading(degrees(self.theta)))
@@ -230,24 +258,58 @@ class Tracking:
         angle = InertialWrapper.to_angle(heading)
         self.inertial.set_rotation(angle, RotationUnits.DEG)
 
+    def avg_motor_times(self, mg: MotorGroup):
+        num_motors = len(mg._motors)
+        if num_motors == 0:
+            raise RuntimeError("No Motors Found")
+        sum = 0
+        for m in mg._motors:
+            sum += m.timestamp()
+        sum = sum / len(mg._motors)
+        return sum
+
     def track_motors(self, left_drive: MotorGroup, right_drive: MotorGroup, inertial: InertialWrapper):
         print("Tracker Using Motor Encoders")
-        initial_encoders = Tracking.EncoderValues(left_drive.position(RotationUnits.REV), right_drive.position(RotationUnits.REV), 0.0, Tracking.gyro_theta(inertial)) 
-        self.set_initial_values(initial_encoders)
-        # tracker = Tracking(orientation, configuration, initial_encoders, inertial)
+        initial_encoders = Tracking.EncoderValues(left_drive.position(RotationUnits.REV), right_drive.position(RotationUnits.REV), 0.0, Tracking.gyro_theta(inertial))
+        initial_timestamps = Tracking.EncoderValues(self.avg_motor_times(left_drive), self.avg_motor_times(right_drive), 0, inertial.timestamp())
+        self.set_initial_values(initial_encoders, initial_timestamps)
+        time_sum = 0
+        time_count = 0
         while(True):
+            start_time = self.timer.system_high_res()
+
             if (self._is_enabled):
-                self.update_location(left_drive.position(RotationUnits.REV), right_drive.position(RotationUnits.REV), 0.0, Tracking.gyro_theta(inertial))
+                encoders = Tracking.EncoderValues(left_drive.position(RotationUnits.REV), right_drive.position(RotationUnits.REV), 0.0, Tracking.gyro_theta(inertial))
+                timestamps = Tracking.EncoderValues(self.avg_motor_times(left_drive), self.avg_motor_times(right_drive), 0, inertial.timestamp())
+                self.update_location(encoders, timestamps)
+
+            end_time = self.timer.system_high_res()
+            time_sum += end_time - start_time
+            time_count += 1
+            self.avg_time = time_sum / time_count
+
             wait(self.timestep, SECONDS)
 
     def track_odometry(self, rotation_fwd: Rotation, rotation_side: Rotation, inertial: InertialWrapper):
         print("Tracker Using Rotation Sensors")
-        initial_encoders = Tracking.EncoderValues(rotation_fwd.position(RotationUnits.REV), 0.0, rotation_side.position(RotationUnits.REV), Tracking.gyro_theta(inertial)) 
-        self.set_initial_values(initial_encoders)
-        # tracker = Tracking(orientation, configuration, initial_encoders, inertial)
+        initial_encoders = Tracking.EncoderValues(rotation_fwd.position(RotationUnits.REV), 0.0, rotation_side.position(RotationUnits.REV), Tracking.gyro_theta(inertial))
+        initial_timestamps = Tracking.EncoderValues(rotation_fwd.timestamp(), 0, rotation_side.timestamp(), inertial.timestamp())
+        self.set_initial_values(initial_encoders, initial_timestamps)
+        time_sum = 0
+        time_count = 0
         while(True):
+            start_time = self.timer.system_high_res()
+
             if (self._is_enabled):
-                self.update_location(rotation_fwd.position(RotationUnits.REV), 0.0, rotation_side.position(RotationUnits.REV), Tracking.gyro_theta(inertial))
+                encoders = Tracking.EncoderValues(rotation_fwd.position(RotationUnits.REV), 0.0, rotation_side.position(RotationUnits.REV), Tracking.gyro_theta(inertial))
+                timestamps = Tracking.EncoderValues(rotation_fwd.timestamp(), 0, rotation_side.timestamp(), inertial.timestamp())
+                self.update_location(encoders, timestamps)
+
+            end_time = self.timer.system_high_res()
+            time_sum += end_time - start_time
+            time_count += 1
+            self.avg_time = time_sum / time_count
+
             wait(self.timestep, SECONDS)
 
     def tracker_thread(self, devices, unused):
@@ -262,3 +324,4 @@ class Tracking:
 
     def start_tracker(self, devices):
         return Thread(self.tracker_thread, (devices, 0))
+

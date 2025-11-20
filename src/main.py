@@ -86,6 +86,9 @@ def pre_autonomous():
 
     wait(0.1, SECONDS)
 
+    brain.screen.clear_screen()
+    brain.screen.print("pre auton")
+    brain.screen.new_line()
     print("pre_auton")
 
     for motor in all_motors:
@@ -93,6 +96,7 @@ def pre_autonomous():
     for sensor in all_sensors:
         if not sensor.installed(): ROBOT_INITIALIZATION_FAILED = True
 
+    print("calibratiing ...")
     if inertial.installed():
         inertial.calibrate()
         while inertial.is_calibrating():
@@ -103,8 +107,11 @@ def pre_autonomous():
         brain.screen.print("INITIALIZATION FAILED: Check Connections")
         while(True):
             wait(1, SECONDS)
+    print("done ...")
 
     initialize_tracker()
+
+    print("pre_auton done")
 
     ROBOT_INITIALIZED = True
 
@@ -113,6 +120,12 @@ def print_tracker(tracker: Tracking, x = 0.0, y = 0.0):
     origin_distance, origin_heading = tracker.trajectory_to_point(x, y)
     print("X: {:.1f} mm, Y: {:.1f} mm, Heading: {:.2f} deg".format(orientation.x, orientation.y, orientation.heading))
     print(" - To Point: Distance: {:.1f} mm, Heading: {:.2f} deg".format(origin_distance, origin_heading))
+    print(" - Perf: {:.3f}us, {},{},{},{}".format(
+        tracker.avg_time,
+        tracker.previous_timestamps.left,
+        tracker.previous_timestamps.right,
+        tracker.previous_timestamps.side,
+        tracker.previous_timestamps.theta))
 
 # DEMO1: Once robot has been tuned for individual commands this will turn the robot and drive forward and backwards
 def auton1_drive_straight(drive_train: DriveProxy, tracker: Tracking):
@@ -347,6 +360,9 @@ def autonomous():
     while not ROBOT_INITIALIZED:
         wait(10, MSEC)
 
+    brain.screen.clear_screen()
+    brain.screen.print("auton")
+    brain.screen.new_line()
     print("auton")
 
     drive_train = DriveProxy(left_drive, right_drive, inertial, wheel_travel_mm=DRIVETRAIN_WHEEL_SIZE)
@@ -363,16 +379,21 @@ def autonomous():
 
     # calibration_tracking_wheels()
     # auton1_drive_straight(drive_train, tracker)
-    # auton2_drive_to_points(drive_train, tracker)
+    auton2_drive_to_points(drive_train, tracker)
     # auton3_drive_to_points_long(drive_train, tracker)
     # auton4_circle_drive(tracker)
-    test_concurrent(drive_train, tracker)
+    # test_concurrent(drive_train, tracker)
 
     print("auton done")
 
 def user_control():
     while not ROBOT_INITIALIZED:
         wait(10, MSEC)
+
+    brain.screen.clear_screen()
+    brain.screen.print("user control")
+    brain.screen.new_line()
+    print("user control")
 
     if tracker is None:
         raise RuntimeError("Tracker not initialized")
