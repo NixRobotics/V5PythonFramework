@@ -9,6 +9,7 @@
 
 # Library imports
 from vex import *
+import gc
 from math import pi
 from inertialwrapper import InertialWrapper
 from driveproxy import DriveProxy
@@ -16,7 +17,6 @@ from tracker import Tracking
 from smartdrvwrapper import SmartDriveWrapper
 
 brain=Brain()
-
 l1 = Motor(Ports.PORT1, GearSetting.RATIO_18_1, True)
 l2 = Motor(Ports.PORT3, GearSetting.RATIO_18_1, True)
 left_drive = MotorGroup(l1, l2)
@@ -31,7 +31,8 @@ all_motors = [l1, l2, r1, r2]
 GYRO_SCALE_FOR_READOUT = 362.0/360.0
 inertial = InertialWrapper(Ports.PORT5, GYRO_SCALE_FOR_READOUT)
 
-USING_TRACKING_WHEELS = True
+USING_TRACKING_WHEELS = False
+USING_RESAMPLING = False
 
 if USING_TRACKING_WHEELS:
     rotation_fwd = Rotation(Ports.PORT6, False)
@@ -78,6 +79,7 @@ def initialize_tracker():
         tracker_devices = [left_drive, right_drive, inertial]
 
     tracker = Tracking(tracker_devices, starting_location, tracker_configuration, initial_values=None)
+    tracker.enable_resampling(USING_RESAMPLING)
     # give tracker some time to get going
     wait(0.1, SECONDS)
 
@@ -120,12 +122,12 @@ def print_tracker(tracker: Tracking, x = 0.0, y = 0.0):
     origin_distance, origin_heading = tracker.trajectory_to_point(x, y)
     print("X: {:.1f} mm, Y: {:.1f} mm, Heading: {:.2f} deg".format(orientation.x, orientation.y, orientation.heading))
     print(" - To Point: Distance: {:.1f} mm, Heading: {:.2f} deg".format(origin_distance, origin_heading))
-    print(" - Perf: {:.3f}us, {},{},{},{}".format(
-        tracker.avg_time,
-        tracker.previous_timestamps.left,
-        tracker.previous_timestamps.right,
-        tracker.previous_timestamps.side,
-        tracker.previous_timestamps.theta))
+    #print(" - Perf: {:.3f}us, {},{},{},{}".format(
+    #    tracker.avg_time,
+    #    tracker.previous_timestamps.left,
+    #    tracker.previous_timestamps.right,
+    #    tracker.previous_timestamps.side,
+    #    tracker.previous_timestamps.theta))
 
 # DEMO1: Once robot has been tuned for individual commands this will turn the robot and drive forward and backwards
 def auton1_drive_straight(drive_train: DriveProxy, tracker: Tracking):
@@ -208,6 +210,8 @@ def auton3_drive_to_points_long(drive_train: DriveProxy, tracker:Tracking):
     #    [x_near, y_mid_left]
     #]
 
+    controller1 = Controller()
+
     for i in range(4):
         for point in points:
             print("")
@@ -215,9 +219,16 @@ def auton3_drive_to_points_long(drive_train: DriveProxy, tracker:Tracking):
             x = point[0]
             y = point[1]
             print_tracker(tracker, x, y)
+            print(inertial.rotation())
+            #while not controller1.buttonA.pressing():
+            #    wait(10, MSEC)
             distance, heading = tracker.trajectory_to_point(x, y)
             timeout = 1.0 + distance / (drive_train.linear_speed() * 1000.0) # convert to MM/s and pad with 1 sec
-            drive_train.turn_to_heading(heading, settle_error=0.5, timeout=2.0)
+            drive_train.turn_to_heading(heading, settle_error=1.0, timeout=1.0)
+            print_tracker(tracker, x, y)
+            #while not controller1.buttonA.pressing():
+            #    wait(10, MSEC)
+            distance, heading = tracker.trajectory_to_point(x, y)
             drive_train.drive_for(FORWARD, distance, MM, heading, timeout=timeout)
             wait(0.1, SECONDS)
             print_tracker(tracker, x, y)
@@ -319,12 +330,13 @@ def sim_circle(drive_speed, circle_radius, slip_factor):
 
     return left_rpm, right_rpm, drive_time
 
-def auton4_circle_drive(tracker: Tracking):
+def auton4_circle_drive(drive_train: DriveProxy, tracker: Tracking):
     left_speed, right_speed, drive_time = sim_circle(250.0, 300.0, 0.44)
     log = []
     orientation = tracker.get_orientation()
     log.append([orientation.x,  orientation.y, orientation.heading])
     while drive_time > 0.0:
+        # drive_train.spin(left_speed * 100.0 / 200.0, right_speed * 100.0 / 200.0) # convert from RPM to percent
         left_drive.spin(FORWARD, left_speed, RPM)
         right_drive.spin(FORWARD, right_speed, RPM)
         drive_time -= 0.01
@@ -338,7 +350,7 @@ def auton4_circle_drive(tracker: Tracking):
 
     for entry in log:
         print(entry[0], ",", entry[1], ",", entry[2])
-        wait(100, MSEC)
+        wait(50, MSEC)
 
 def test_concurrent(drive_train: DriveProxy, tracker: Tracking):
     print(drive_train.turn_for(RIGHT, 90, DEGREES, wait = False))
@@ -356,6 +368,7 @@ def test_concurrent(drive_train: DriveProxy, tracker: Tracking):
     print(drive_train.drive_for(REVERSE, 50, MM, wait = True))
     print_tracker(tracker)
 
+
 def autonomous():
     while not ROBOT_INITIALIZED:
         wait(10, MSEC)
@@ -368,7 +381,7 @@ def autonomous():
     drive_train = DriveProxy(left_drive, right_drive, inertial, wheel_travel_mm=DRIVETRAIN_WHEEL_SIZE)
     drive_train.set_turn_constants(Kp=1.0, Ki=0.04, Kd=10.0, settle_error=0.5) # degrees
     drive_train.set_drive_constants(Kp=0.5, Ki=0.0, Kd=0.0, settle_error=5) # mm
-    drive_train.set_heading_lock_constants(Kp=1.4, Ki=0.0, Kd=0.0, settle_error=0.0) # degrees
+    drive_train.set_heading_lock_constants(Kp=2.0, Ki=0.0, Kd=0.0, settle_error=0.0) # degrees
     drive_train.set_turn_velocity(66, PERCENT)
     drive_train.set_drive_velocity(66, PERCENT)
     drive_train.set_drive_acceleration(10, PERCENT) # 5% per timestep
@@ -379,16 +392,20 @@ def autonomous():
 
     # calibration_tracking_wheels()
     # auton1_drive_straight(drive_train, tracker)
-    auton2_drive_to_points(drive_train, tracker)
+    # auton2_drive_to_points(drive_train, tracker)
     # auton3_drive_to_points_long(drive_train, tracker)
-    # auton4_circle_drive(tracker)
-    # test_concurrent(drive_train, tracker)
+    # auton4_circle_drive(drive_train, tracker)
+    # auton5_circle_follow(drive_train, tracker)
+    test_concurrent(drive_train, tracker)
 
     print("auton done")
 
 def user_control():
     while not ROBOT_INITIALIZED:
         wait(10, MSEC)
+
+    free = gc.mem_free() # type: ignore
+    print(free)
 
     brain.screen.clear_screen()
     brain.screen.print("user control")

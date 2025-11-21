@@ -48,7 +48,7 @@ class InertialWrapper(Inertial):
     def calc_angle_to_heading(self, heading):
         current_heading = self.heading()
         delta_heading = heading - current_heading
-        delta_angle = InertialWrapper.to_angle(delta_heading) / self.gyro_scale # divide: sic
+        delta_angle = InertialWrapper.to_angle(delta_heading)
         return delta_angle
 
     def calc_rotation_at_heading(self, heading):
@@ -59,6 +59,6 @@ class InertialWrapper(Inertial):
         delta_angle = InertialWrapper.to_angle(delta_heading)
 
         new_rotation = current_rotation + delta_angle
-        new_rotation *= (1.0 / self.gyro_scale)
+        # new_rotation *= (1.0 / self.gyro_scale)
 
         return new_rotation

@@ -1,4 +1,3 @@
-
 # Library imports
 from vex import *
 from math import sin, cos, radians, degrees, atan2, sqrt
@@ -66,7 +65,7 @@ class Tracking:
         print('init')
 
         self._is_enabled = False
-        self._enable_resampling = False
+        self._enable_resampling = True
 
         x = 0.0 if orientation is None else orientation.x
         y = 0.0 if orientation is None else orientation.y
@@ -107,8 +106,10 @@ class Tracking:
         self.previous_theta = self.theta # radians
 
         # Keep track of raw encoder values for resampling
-        self.previous_encoders = initial_values
-        self.previous_timestamps = Tracking.EncoderValues(0, 0, 0, 0)
+        self.latest_encoders = initial_values
+        self.latest_timestamps = Tracking.EncoderValues(0, 0, 0, 0)
+        self.previous_encoders =  self.latest_encoders
+        self.previous_timestamps = self.latest_timestamps
 
         self.this_thread = self.start_tracker(devices)
 
@@ -118,6 +119,8 @@ class Tracking:
         self.previous_side_position = initial_values.side # revolutions
         # self.previous_theta = initial_values.theta --- not used
 
+        self.latest_encoders = initial_values
+        self.latest_timestamps = initial_timestamps
         self.previous_encoders = initial_values
         self.previous_timestamps = initial_timestamps
 
@@ -172,22 +175,49 @@ class Tracking:
 
         return (x + delta_global_x, y + delta_global_y, theta + delta_theta)
     
+    # 0 is older, 1 is newer
     def linear_interp(self, s0, s1, t0, t1, t_ref):
         if t1 == t0: return s1
         if t0 == t_ref: return s0
         if t1 == t_ref: return s1
         s_new = s0 + (t_ref - t0) * ((s1 - s0) / (t1 - t0))
         return s_new
+    
+    # 0 is oldest, 2 is newest
+    def rolling_buffer_update(self, s0, s1, s2, t0, t1, t2):
+        updated = t2 > t1
+        s_new = s2 if updated else s1
+        s_old = s1 if updated else s0
+        t_new = t2 if updated else t1
+        t_old = t1 if updated else t0
+        return s_old, s_new, t_old, t_new
+    
+    def rolling_buffer(self, new_values: EncoderValues, new_timestamps: EncoderValues, index):
+        if self.previous_encoders is None or self.latest_encoders is None:
+            raise RuntimeError("Previous Encoder Values Not Set")
+        return_vals = self.rolling_buffer_update(
+            self.previous_encoders[index], self.latest_encoders[index], new_values[index],
+            self.previous_timestamps[index], self.latest_timestamps[index], new_timestamps[index])
+        return return_vals
 
     def resample(self, encoders: EncoderValues, timestamps: EncoderValues):
         # We attempt to align everything to the gyro, if that does not get updated we'll just use the latest values
         # gyro skips very infrequently so any anomolies from this should be minimal
-        if self.previous_encoders is None:
-            raise RuntimeError("Previous Encoder Values Not Set")
+
+        # Update rolling buffers
+        old_left_val, new_left_val, old_left_time, new_left_time = self.rolling_buffer(encoders, timestamps, 0)
+        old_right_val, new_right_val, old_right_time, new_right_time = self.rolling_buffer(encoders, timestamps, 1)
+        old_side_val, new_side_val, old_side_time, new_side_time = self.rolling_buffer(encoders, timestamps, 2)
+        old_theta_val, new_theta_val, old_theta_time, new_theta_time = self.rolling_buffer(encoders, timestamps, 3)
         
-        left = self.linear_interp(self.previous_encoders.left, encoders.left, self.previous_timestamps.left, timestamps.left, timestamps.theta)
-        right = self.linear_interp(self.previous_encoders.right, encoders.right, self.previous_timestamps.right, timestamps.right, timestamps.theta)
-        side = self.linear_interp(self.previous_encoders.side, encoders.side, self.previous_timestamps.side, timestamps.side, timestamps.theta)
+        self.previous_encoders = Tracking.EncoderValues(old_left_val, old_right_val, old_side_val, old_theta_val)
+        self.previous_timestamps = Tracking.EncoderValues(old_left_time, old_right_time, old_side_time, old_theta_time)
+        self.latest_encoders = Tracking.EncoderValues(new_left_val, new_right_val, new_side_val, new_theta_val)
+        self.latest_timestamps = Tracking.EncoderValues(new_left_time, new_right_time, new_side_time, new_theta_time)
+
+        left = self.linear_interp(self.previous_encoders.left, self.latest_encoders.left, self.previous_timestamps.left, self.latest_timestamps.left, self.latest_timestamps.theta)
+        right = self.linear_interp(self.previous_encoders.right, self.latest_encoders.right, self.previous_timestamps.right, self.latest_timestamps.right, self.latest_timestamps.theta)
+        side = self.linear_interp(self.previous_encoders.side, self.latest_encoders.side, self.previous_timestamps.side, self.latest_timestamps.side, self.latest_timestamps.theta)
 
         return Tracking.EncoderValues(left, right, side, encoders.theta)
 
@@ -226,9 +256,6 @@ class Tracking:
         self.previous_right_position = right_position
         self.previous_side_position = side_position
         self.previous_theta = theta
-
-        self.previous_encoders = encoders
-        self.previous_timestamps = timestamps
     
     def get_orientation(self):
         return Tracking.Orientation(self.x, self.y, InertialWrapper.to_heading(degrees(self.theta)))
@@ -316,6 +343,8 @@ class Tracking:
         if len(devices) != 3:
             print("missing prequisite number of devices (3)")
             return
+        
+        wait(10, MSEC)
 
         if not self.fwd_is_odom:
             self.track_motors(devices[0], devices[1], devices[2])
@@ -324,4 +353,3 @@ class Tracking:
 
     def start_tracker(self, devices):
         return Thread(self.tracker_thread, (devices, 0))
-

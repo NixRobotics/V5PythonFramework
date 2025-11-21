@@ -1,3 +1,6 @@
+
+# -----------------------
+
 from vex import *
 from inertialwrapper import InertialWrapper
 from pid import PID
@@ -17,7 +20,7 @@ DRIVETRAIN_EXT_GEAR_RATIO = 60.0 / 60.0
 class DriveProxy:
 
     MAX_VOLTAGE = 11.5
-    MAX_PERCENT = 50.0 # HACK: for same K values tuned for voltage, need to slow percent motor control down
+    MAX_PERCENT = 100.0 # HACK: for same K values tuned for voltage, need to slow percent motor control down to 50% for stability
     USE_VOLTAGE = True
 
     class PIDParameters:
@@ -144,7 +147,7 @@ class DriveProxy:
         angle = self.inertial.calc_angle_to_heading(heading)
         return self.turn_for(RIGHT, angle, DEGREES, settle_error=settle_error, timeout=timeout, wait=wait)
 
-    def _turn_for(self, direction, angle, unit, settle_error = None, timeout = None):
+    def _turn_for(self, direction, angle, unit, settle_error, timeout):
         if unit is not RotationUnits.DEG: raise NotImplementedError("Units must be MM")
         self._command_running = True
         timer = Timer()
@@ -186,7 +189,7 @@ class DriveProxy:
             self._worker_thread = Thread(self._turn_for_thread, (direction, angle, unit, settle_error, timeout))
             return 0
 
-    def _drive_for(self, direction, distance, unit, heading = None, settle_error = None, timeout = None):
+    def _drive_for(self, direction, distance, unit, heading, settle_error, timeout):
         if unit is not DistanceUnits.MM: raise NotImplementedError("Units must be DEG")
         self._command_running = True
         timer = Timer()
@@ -269,7 +272,7 @@ class DriveProxy:
 
     def spin(self, left_speed, right_speed):
         self._concurrency_check()
-        self._spin(left_speed, right_speed)
+        self._spin(left_speed / 100.0, right_speed / 100.0)
         return True
 
     def _stop(self, mode):
@@ -290,3 +293,4 @@ class DriveProxy:
         return input
 
 # ----------------------------
+
