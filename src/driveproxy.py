@@ -1,11 +1,8 @@
-
-# -----------------------
-
 from vex import *
 from inertialwrapper import InertialWrapper
 from pid import PID
 
-# TODO: MOVE THESE
+# Default Values
 DRIVETRAIN_MOTOR_SPEED_RPM = 200.0
 DRIVETRAIN_WHEEL_SIZE = 320.0
 DRIVETRAIN_EXT_GEAR_RATIO = 60.0 / 60.0
@@ -20,7 +17,7 @@ DRIVETRAIN_EXT_GEAR_RATIO = 60.0 / 60.0
 class DriveProxy:
 
     MAX_VOLTAGE = 11.5
-    MAX_PERCENT = 100.0 # HACK: for same K values tuned for voltage, need to slow percent motor control down to 50% for stability
+    MAX_PERCENT = 100.0
     USE_VOLTAGE = True
 
     class PIDParameters:
@@ -39,6 +36,7 @@ class DriveProxy:
         self.turn_pid_constants = DriveProxy.PIDParameters()
         self.drive_pid_constants = DriveProxy.PIDParameters()
         self.heading_lock_pid_constants = DriveProxy.PIDParameters()
+        self.heading_lock_pid_constants.settle_error = 0.0
         self.default_timeout = 10.0 # seconds
 
         self.left_motors = left_motors # motor group
@@ -51,14 +49,20 @@ class DriveProxy:
 
         self.stop_mode = BrakeType.COAST
 
-        self.drive_velocity = 100.0 # percent
+        self.drive_velocity = DriveProxy.MAX_PERCENT # percent
 
+        self._this_timeout = None # timeout of current command in seconds (or None if no command running)
+        self._was_timeout = False # Indicates if last command timed out 
+        self._timeout_notifier = Event()
         self._worker_thread = None
         self._command_running = False
         self._cancel_command = False
 
     def is_done(self):
         return not self._command_running
+    
+    def is_timed_out(self):
+        return self._was_timeout
     
     def _concurrency_check(self):
         if self._command_running:
@@ -67,78 +71,139 @@ class DriveProxy:
         return True
 
     def set_drive_velocity(self, velocity, unit):
+        if (unit is not PercentUnits.PERCENT): raise ValueError("Units must be PERCENT")
         self._concurrency_check()
         self.drive_velocity = velocity
         self.drive_pid_constants.max_output = velocity / 100.0
         return True
 
     def set_drive_acceleration(self, acceleration, unit):
+        if (unit is not PercentUnits.PERCENT): raise ValueError("Units must be PERCENT")
         self._concurrency_check()
         self.drive_pid_constants.max_ramp = acceleration / 100.0
         return True
 
     # settle error will be in MM, we need to convert to degree revolutions for internal use
     def calc_drive_settle_error(self, settle_error):
+        '''
+        ### Converts settle error in MM to degrees of wheel rotation
+        '''
         return 360.0 * settle_error / (self.wheel_travel_mm * self.ext_gear_ratio)
 
-    def set_drive_constants(self, Kp, Ki, Kd, settle_error):
+    def set_drive_constants(self, Kp=None, Ki=None, Kd=None, settle_error=None):
+        '''
+        ### Sets the drive PID constants
+
+        Internally PID is based on motor rotations, but settle_error is provided in MM for convenience. It is converted internally.
+
+        ### Arguments
+            Kp (optional): Proportional constant
+            Ki (optional): Integral constant
+            Kd (optional): Derivative constant
+            settle_error (optional): settle error in MM. Default internally is 1 degree of motor rotation
+
+        ### Returns
+            True if successful
+        '''
         self._concurrency_check()
-        self.drive_pid_constants.Kp = Kp
-        self.drive_pid_constants.Ki = Ki
-        self.drive_pid_constants.Kd = Kd
-        self.drive_pid_constants.settle_error = self.calc_drive_settle_error(settle_error)
+        if Kp is not None: self.drive_pid_constants.Kp = Kp
+        if Ki is not None: self.drive_pid_constants.Ki = Ki
+        if Kd is not None: self.drive_pid_constants.Kd = Kd
+        if settle_error is not None: self.drive_pid_constants.settle_error = self.calc_drive_settle_error(settle_error)
         return True
 
     def set_turn_velocity(self, velocity, unit):
+        if (unit is not PercentUnits.PERCENT): raise ValueError("Units must be PERCENT")
         self._concurrency_check()
         self.turn_pid_constants.max_output = velocity / 100.0
         self.heading_lock_pid_constants.max_output = velocity / 100.0
         return True
 
     def set_turn_acceleration(self, acceleration, unit):
+        if (unit is not PercentUnits.PERCENT): raise ValueError("Units must be PERCENT")
         self._concurrency_check()
         self.turn_pid_constants.max_ramp = acceleration / 100.0
         return True
 
-    def set_turn_constants(self, Kp, Ki, Kd, settle_error):
+    def set_turn_constants(self, Kp=None, Ki=None, Kd=None, settle_error=None):
+        '''
+        ### Sets the turn PID constants
+
+        settle_error is in degrees of robot turns. Default is +/- 1deg\\
+        Uses the current timeout value
+        '''
         self._concurrency_check()
-        self.turn_pid_constants.Kp = Kp
-        self.turn_pid_constants.Ki = Ki
-        self.turn_pid_constants.Kd = Kd
+        if Kp is not None: self.turn_pid_constants.Kp = Kp
+        if Ki is not None: self.turn_pid_constants.Ki = Ki
+        if Kd is not None: self.turn_pid_constants.Kd = Kd
         # degrees
-        self.turn_pid_constants.settle_error = settle_error
+        if settle_error is not None: self.turn_pid_constants.settle_error = settle_error
         return True
 
-    def set_heading_lock_constants(self, Kp, Ki, Kd, settle_error):
+    def set_heading_lock_constants(self, Kp=None, Ki=None, Kd=None):
+        '''
+        ### Sets the heading lock/hold constants
+
+        Typically only need Kp which would be set higher than for just pure turns. Does not take a settle error and does
+        not timeout
+        '''
         self._concurrency_check()
-        self.heading_lock_pid_constants.Kp = Kp
-        self.heading_lock_pid_constants.Ki = Ki
-        self.heading_lock_pid_constants.Kd = Kd
-        self.heading_lock_pid_constants.settle_error = settle_error
+        if Kp is not None: self.heading_lock_pid_constants.Kp = Kp
+        if Ki is not None: self.heading_lock_pid_constants.Ki = Ki
+        if Kd is not None: self.heading_lock_pid_constants.Kd = Kd
         return True
 
     def set_timeout(self, time):
+        '''
+        ### Sets timeout in SECONDS for all motion commands
+        
+        ### Arguments
+            time: timeout in SECONDS
+        '''
         self._concurrency_check()
         self.default_timeout = time
         return True
+    
+    def get_timeout(self):
+        '''
+        ### Gets the timeout of the curent command, or default if no command is executing
+
+        ### Arguments
+            None
+
+        ### Returns
+            Timeout is SECONDS
+        '''
+        return self.default_timeout if self._this_timeout is None else self._this_timeout
+    
+    def set_timeout_callback(self, fn):
+        self._timeout_notifier.set(fn)
 
     def set_stopping(self, mode):
         self._concurrency_check()
         self.stop_mode = mode
         return True
 
-    # Returns approx max linear speed of robot (m/s) - useful for timeout calculations
-    # If using voltage for motors, top speed will be somewhat above stated RPM of cartridge
-    # Will not take into account acceleration, deceleration and settle time - pad appropriately
     def linear_speed(self):
+        '''
+        ### Returns approx max linear speed of robot (m/s)
+        
+        Useful for timeout calculations.\\
+        If using voltage for motors, top speed will be somewhat above stated RPM of cartridge.\\
+        Will not take into account acceleration, deceleration and settle time - pad appropriately.
+        '''
         # Motor speed in RPM and wheel size in MM
         return self.motor_speed * self.ext_gear_ratio * self.wheel_travel_mm * self.drive_velocity / (1000.0 * 60.0 * 100.0)
     
-    # Approximate max rotational velocity of robot in deg/s
-    # Using most common builds having mix of traction and omni wheels a 200RPM drive on 4" wheels should be
-    # able to turn 360deg in 1 sec, so we scale this heuristic appropriately
-    # TODO: FIXME
     def rotation_speed(self):
+        '''
+        ### Approximate max rotational velocity of robot in deg/s
+        
+        Using most common builds having mix of traction and omni wheels a 200RPM drive on 4" wheels should be
+        able to turn 360deg in 1 sec, so we scale this heuristic appropriately
+
+        #### TODO: FIXME
+        '''
         reference_linear_speed = 1.067 # m/s - speed of 200RPM drive using 4" wheels and 1:1 gear ratio
         reference_rotation_speed = 360.0 # deg/s
         return reference_rotation_speed * self.linear_speed() / reference_linear_speed
@@ -147,7 +212,14 @@ class DriveProxy:
         angle = self.inertial.calc_angle_to_heading(heading)
         return self.turn_for(RIGHT, angle, DEGREES, settle_error=settle_error, timeout=timeout, wait=wait)
 
+    def turn_to_rotation(self, rotation, settle_error = None, timeout = None, wait = True):
+        angle = self.inertial.calc_angle_to_rotation(rotation)
+        return self.turn_for(RIGHT, angle, DEGREES, settle_error=settle_error, timeout=timeout, wait=wait)
+
     def _turn_for(self, direction, angle, unit, settle_error, timeout):
+        '''
+        ### INTERNAL
+        '''
         if unit is not RotationUnits.DEG: raise NotImplementedError("Units must be MM")
         self._command_running = True
         timer = Timer()
@@ -157,7 +229,8 @@ class DriveProxy:
         turn_pid.set_output_ramp_limit(self.turn_pid_constants.max_ramp)
         # allow for per call settle_threshold and timeout, useful if we need to vary accuracy particularly when chaining motions
         turn_pid.set_settle_threshold(self.turn_pid_constants.settle_error if settle_error is None else settle_error) # settle threshold in degrees
-        turn_pid.set_timeout(self.default_timeout if timeout is None else timeout)
+        self._this_timeout = self.default_timeout if timeout is None else timeout
+        turn_pid.set_timeout(self._this_timeout)
         start_rotation = self.inertial.rotation()
         target_rotation = start_rotation + (angle if direction == TurnType.RIGHT else -angle)
         while not turn_pid.is_done() and not self._cancel_command:
@@ -168,16 +241,22 @@ class DriveProxy:
 
             wait(turn_pid.timestep, SECONDS)
 
+        self._was_timeout = turn_pid.get_is_timed_out()
         self._stop(self.stop_mode)
         print("Done Turn: ", turn_pid.get_is_settled(), turn_pid.get_is_timed_out())
 
         # for log_entry in turn_pid.log:
         #     print(log_entry[0], ",", log_entry[1], ",", log_entry[2])
         #     wait(50, MSEC)
+        self._this_timeout = None
         self._command_running = False
+        if (self._was_timeout): self._timeout_notifier.broadcast()
         return timer.time()
     
     def _turn_for_thread(self, args1, arg2, arg3, arg4, arg5):
+        '''
+        ### INTERNAL
+        '''
         self._turn_for(args1, arg2, arg3, arg4, arg5)
     
     def turn_for(self, direction, angle, unit, settle_error = None, timeout = None, wait = True):
@@ -190,7 +269,10 @@ class DriveProxy:
             return 0
 
     def _drive_for(self, direction, distance, unit, heading, settle_error, timeout):
-        if unit is not DistanceUnits.MM: raise NotImplementedError("Units must be DEG")
+        '''
+        ### INTERNAL
+        '''
+        if unit is not DistanceUnits.MM: raise NotImplementedError("Units must be MM")
         self._command_running = True
         timer = Timer()
 
@@ -200,7 +282,8 @@ class DriveProxy:
         # see if we want to override settle and timeout
         if (settle_error is None): drive_pid.set_settle_threshold(self.drive_pid_constants.settle_error)
         else: drive_pid.set_settle_threshold(self.calc_drive_settle_error(settle_error))
-        drive_pid.set_timeout(self.default_timeout if timeout is None else timeout)
+        self._this_timeout = self.default_timeout if timeout is None else timeout
+        drive_pid.set_timeout(self._this_timeout)
 
         if (heading is not None):
             turn_pid = PID(self.heading_lock_pid_constants.Kp, self.heading_lock_pid_constants.Ki, self.heading_lock_pid_constants.Kd)
@@ -232,16 +315,22 @@ class DriveProxy:
 
             wait(drive_pid.timestep, SECONDS)
 
+        self._was_timeout = drive_pid.get_is_timed_out()
         self._stop(self.stop_mode)
         print("Done Drive: ", drive_pid.get_is_settled(), drive_pid.get_is_timed_out())
 
         # for log_entry in drive_pid.log:
         #     print(log_entry[0], ",", log_entry[1], ",", log_entry[2])
         #     wait(50, MSEC)
+        self._this_timeout = None
         self._command_running = False
+        if (self._was_timeout): self._timeout_notifier.broadcast()
         return timer.time()
 
     def _drive_for_thread(self, args1, arg2, arg3, arg4, arg5, arg6):
+        '''
+        ### INTERNAL
+        '''
         self._drive_for(args1, arg2, arg3, arg4, arg5, arg6)
     
     def drive_for(self, direction, distance, unit, heading = None, settle_error = None, timeout = None, wait = True):
@@ -257,6 +346,13 @@ class DriveProxy:
         pass
 
     def _spin(self, left_speed, right_speed):
+        '''
+        ### INTERNAL
+
+        ### Arguments
+            left_speed ([-1.0, 1.0])
+            right_speed ([-1.0, 1.0])
+        '''
         if (self.USE_VOLTAGE):
             left_voltage = self.limit(left_speed * DriveProxy.MAX_VOLTAGE, DriveProxy.MAX_VOLTAGE)
             right_voltage = self.limit(right_speed * DriveProxy.MAX_VOLTAGE, DriveProxy.MAX_VOLTAGE)
@@ -271,11 +367,28 @@ class DriveProxy:
             self.right_motors.spin(FORWARD, right_percent, PERCENT)
 
     def spin(self, left_speed, right_speed):
+        '''
+        ### Spins the motors
+
+        Motors will keep spinning at the commanded speed after the call returns
+
+        Will generate an exception if there is a currently running command
+
+        ### Arguments
+            left_speed (PERCENT, [-100, 100]): Speed for left motor group
+            right_speed (PERCENT, [-100, 100]): Speed for right motor group
+
+        ### Returns
+            None
+        '''
         self._concurrency_check()
         self._spin(left_speed / 100.0, right_speed / 100.0)
         return True
 
     def _stop(self, mode):
+        '''
+        ### INTERNAL
+        '''
         # Note that setting mode to None will keep motors at their last commanded output
         if (mode is not None):
             self.left_motors.stop(mode)
@@ -291,6 +404,3 @@ class DriveProxy:
         if (input > limit_value): return limit_value
         elif (input < -limit_value): return -limit_value
         return input
-
-# ----------------------------
-

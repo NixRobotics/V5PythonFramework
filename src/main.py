@@ -10,7 +10,7 @@
 # Library imports
 from vex import *
 import gc
-from math import pi
+from math import pi, degrees, radians
 from inertialwrapper import InertialWrapper
 from driveproxy import DriveProxy
 from tracker import Tracking
@@ -31,8 +31,8 @@ all_motors = [l1, l2, r1, r2]
 GYRO_SCALE_FOR_READOUT = 362.0/360.0
 inertial = InertialWrapper(Ports.PORT5, GYRO_SCALE_FOR_READOUT)
 
-USING_TRACKING_WHEELS = False
-USING_RESAMPLING = False
+USING_TRACKING_WHEELS = True
+USING_RESAMPLING = True
 
 if USING_TRACKING_WHEELS:
     rotation_fwd = Rotation(Ports.PORT6, False)
@@ -177,6 +177,7 @@ def auton3_drive_to_points_long(drive_train: DriveProxy, tracker:Tracking):
     print("auton3_drive_to_points_long")
     print_tracker(tracker)
 
+    '''
     x_near = 0.0
     x_far = 2.0 * 600.0
 
@@ -189,26 +190,27 @@ def auton3_drive_to_points_long(drive_train: DriveProxy, tracker:Tracking):
         [x_near, y_right],
         [x_near, y_left]
     ]
+    '''
 
     # field tiles are 600mm across (not 18")
-    #x_near = 0.0
-    #x_far = 3.0 * 600.0
+    x_near = 0.0
+    x_far = 3.0 * 600.0
 
-    #y_far_left = -1.5 * 600.0
-    #y_mid_left = 0.0
-    #y_mid_right = 2.0 * 600.0
-    #y_far_right = 3.5 * 600.0
+    y_far_left = -1.5 * 600.0
+    y_mid_left = 0.0
+    y_mid_right = 2.0 * 600.0
+    y_far_right = 3.5 * 600.0
 
-    #points = [
-    #    [x_far, y_mid_left],
-    #    [x_far, y_mid_right],
-    #    [x_near, y_mid_right],
-    #    [x_near, y_far_left],
-    #    [x_far, y_far_left],
-    #    [x_far, y_far_right],
-    #    [x_near, y_far_right],
-    #    [x_near, y_mid_left]
-    #]
+    points = [
+        [x_far, y_mid_left],
+        [x_far, y_mid_right],
+        [x_near, y_mid_right],
+        [x_near, y_far_left],
+        [x_far, y_far_left],
+        [x_far, y_far_right],
+        [x_near, y_far_right],
+        [x_near, y_mid_left]
+    ]
 
     controller1 = Controller()
 
@@ -236,11 +238,15 @@ def auton3_drive_to_points_long(drive_train: DriveProxy, tracker:Tracking):
     print("Start Turn")
     drive_train.turn_to_heading(0.0, settle_error=0.25, timeout=2.0)
     wait(0.1, SECONDS)
-    print_tracker(tracker, x_near, y_left)
+    print_tracker(tracker, x_near, y_mid_left)
+
+def OnTimeout():
+    pass
 
 def calibration_tracking_wheels():
 
     dt = SmartDriveWrapper(left_drive, right_drive, inertial, DRIVETRAIN_WHEEL_SIZE, 320, 320, MM, 1.0)
+    dt.on_timeout(OnTimeout)
 
     wait(1, SECONDS)
 
@@ -353,10 +359,10 @@ def auton4_circle_drive(drive_train: DriveProxy, tracker: Tracking):
         wait(50, MSEC)
 
 def test_concurrent(drive_train: DriveProxy, tracker: Tracking):
-    print(drive_train.turn_for(RIGHT, 90, DEGREES, wait = False))
+    print(drive_train.turn_for(RIGHT, 45, DEGREES, wait = False))
     while not drive_train.is_done(): wait(10, MSEC)
     print_tracker(tracker)
-    print(drive_train.turn_for(LEFT, 90, DEGREES, wait = True))
+    print(drive_train.turn_for(LEFT, 45, DEGREES, wait = True))
     print_tracker(tracker)
     print(drive_train.drive_for(FORWARD, 50, MM, wait = False))
     try:
@@ -367,7 +373,6 @@ def test_concurrent(drive_train: DriveProxy, tracker: Tracking):
     print_tracker(tracker)
     print(drive_train.drive_for(REVERSE, 50, MM, wait = True))
     print_tracker(tracker)
-
 
 def autonomous():
     while not ROBOT_INITIALIZED:
@@ -380,8 +385,8 @@ def autonomous():
 
     drive_train = DriveProxy(left_drive, right_drive, inertial, wheel_travel_mm=DRIVETRAIN_WHEEL_SIZE)
     drive_train.set_turn_constants(Kp=1.0, Ki=0.04, Kd=10.0, settle_error=0.5) # degrees
-    drive_train.set_drive_constants(Kp=0.5, Ki=0.0, Kd=0.0, settle_error=5) # mm
-    drive_train.set_heading_lock_constants(Kp=2.0, Ki=0.0, Kd=0.0, settle_error=0.0) # degrees
+    drive_train.set_drive_constants(Kp=0.5, Ki=0.01, Kd=0.0, settle_error=5) # mm
+    drive_train.set_heading_lock_constants(Kp=2.0, Ki=0.0, Kd=0.0) # degrees
     drive_train.set_turn_velocity(66, PERCENT)
     drive_train.set_drive_velocity(66, PERCENT)
     drive_train.set_drive_acceleration(10, PERCENT) # 5% per timestep
@@ -389,6 +394,9 @@ def autonomous():
     if tracker is None:
         raise RuntimeError("Tracker not initialized")
     tracker.enable()
+
+    free = gc.mem_free() # type: ignore
+    print(free)
 
     # calibration_tracking_wheels()
     # auton1_drive_straight(drive_train, tracker)
@@ -401,6 +409,8 @@ def autonomous():
     print("auton done")
 
 def user_control():
+    print("user control")
+
     while not ROBOT_INITIALIZED:
         wait(10, MSEC)
 
@@ -410,7 +420,6 @@ def user_control():
     brain.screen.clear_screen()
     brain.screen.print("user control")
     brain.screen.new_line()
-    print("user control")
 
     if tracker is None:
         raise RuntimeError("Tracker not initialized")

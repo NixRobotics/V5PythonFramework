@@ -61,7 +61,8 @@ class Tracking:
                  devices,
                  orientation: Union[Orientation, None] = None,
                  configuration: Union[Configuration, None] = None,
-                 initial_values: Union[EncoderValues, None] = None):
+                 initial_values: Union[EncoderValues, None] = None,
+                 initial_timestamps: Union[EncoderValues, None] = None):
         print('init')
 
         self._is_enabled = False
@@ -106,10 +107,10 @@ class Tracking:
         self.previous_theta = self.theta # radians
 
         # Keep track of raw encoder values for resampling
-        self.latest_encoders = initial_values
-        self.latest_timestamps = Tracking.EncoderValues(0, 0, 0, 0)
-        self.previous_encoders =  self.latest_encoders
-        self.previous_timestamps = self.latest_timestamps
+        self.latest_encoders = self.previous_encoders = [0.0, 0.0, 0.0, 0.0]
+        self.latest_timestamps = self.previous_timestamps = [0, 0, 0, 0]
+        if initial_values is not None:
+            self.init_rolling_buffers(initial_values, initial_timestamps)
 
         self.this_thread = self.start_tracker(devices)
 
@@ -119,10 +120,17 @@ class Tracking:
         self.previous_side_position = initial_values.side # revolutions
         # self.previous_theta = initial_values.theta --- not used
 
-        self.latest_encoders = initial_values
-        self.latest_timestamps = initial_timestamps
-        self.previous_encoders = initial_values
-        self.previous_timestamps = initial_timestamps
+        self.init_rolling_buffers(initial_values, initial_timestamps)
+
+    def init_rolling_buffers(self, initial_values: Union[EncoderValues, None], initial_timestamps: Union[EncoderValues, None], mask = None):
+        if initial_values is None or initial_timestamps is None:
+            raise RuntimeError("Rolling Buffer: Initial Values and Timestamps Can Not Be None")
+        for i in range(len(initial_values)):
+            if mask is None or mask == i:
+                self.latest_encoders[i] = initial_values[i]
+                self.latest_timestamps[i] = initial_timestamps[i]
+                self.previous_encoders[i] =  self.latest_encoders[i]
+                self.previous_timestamps[i] = self.latest_timestamps[i]
 
     def set_configuration(self, configuration: Configuration):
         self.fwd_is_odom = configuration.fwd_is_odom
@@ -139,16 +147,22 @@ class Tracking:
 
     def enable_resampling(self, enabled = True):
         self._enable_resampling = enabled
-        
-    # returns internal theta (radians) in degrees heading [0, 360)
-    # theoretically this is same as calling GyroHelper.gyro_heading()
+
     def current_heading(self):
+        '''
+        Returns internal theta (radians) in degrees heading [0, 360)
+
+        Theoretically this is same as calling GyroHelper.gyro_heading()
+        '''
         heading_deg = degrees(self.theta)
         return InertialWrapper.to_heading(heading_deg)
 
     def calc_timestep_arc_chord(self, x, y, theta, delta_forward, delta_side, delta_theta):
-        # x, y, delta_forward, delta_side in MM
-        # theta, delta_theta in radians
+        '''
+        x, y, delta_forward, delta_side in MM
+
+        theta, delta_theta in radians
+        '''
 
         # local deltas
         if (delta_theta == 0.0):
@@ -182,56 +196,54 @@ class Tracking:
         if t1 == t_ref: return s1
         s_new = s0 + (t_ref - t0) * ((s1 - s0) / (t1 - t0))
         return s_new
-    
-    # 0 is oldest, 2 is newest
-    def rolling_buffer_update(self, s0, s1, s2, t0, t1, t2):
-        updated = t2 > t1
-        s_new = s2 if updated else s1
-        s_old = s1 if updated else s0
-        t_new = t2 if updated else t1
-        t_old = t1 if updated else t0
-        return s_old, s_new, t_old, t_new
-    
-    def rolling_buffer(self, new_values: EncoderValues, new_timestamps: EncoderValues, index):
+        
+    def rolling_buffer(self, values, timestamps, index):
         if self.previous_encoders is None or self.latest_encoders is None:
             raise RuntimeError("Previous Encoder Values Not Set")
-        return_vals = self.rolling_buffer_update(
-            self.previous_encoders[index], self.latest_encoders[index], new_values[index],
-            self.previous_timestamps[index], self.latest_timestamps[index], new_timestamps[index])
-        return return_vals
+        
+        if timestamps[index] > self.latest_timestamps[index]:
+            self.previous_timestamps[index] = self.latest_timestamps[index]
+            self.latest_timestamps[index] = timestamps[index]
+            self.previous_encoders[index] = self.latest_encoders[index]
+            self.latest_encoders[index] = values[index]
 
-    def resample(self, encoders: EncoderValues, timestamps: EncoderValues):
+    def resample(self, values, timestamps):
         # We attempt to align everything to the gyro, if that does not get updated we'll just use the latest values
         # gyro skips very infrequently so any anomolies from this should be minimal
 
         # Update rolling buffers
-        old_left_val, new_left_val, old_left_time, new_left_time = self.rolling_buffer(encoders, timestamps, 0)
-        old_right_val, new_right_val, old_right_time, new_right_time = self.rolling_buffer(encoders, timestamps, 1)
-        old_side_val, new_side_val, old_side_time, new_side_time = self.rolling_buffer(encoders, timestamps, 2)
-        old_theta_val, new_theta_val, old_theta_time, new_theta_time = self.rolling_buffer(encoders, timestamps, 3)
-        
-        self.previous_encoders = Tracking.EncoderValues(old_left_val, old_right_val, old_side_val, old_theta_val)
-        self.previous_timestamps = Tracking.EncoderValues(old_left_time, old_right_time, old_side_time, old_theta_time)
-        self.latest_encoders = Tracking.EncoderValues(new_left_val, new_right_val, new_side_val, new_theta_val)
-        self.latest_timestamps = Tracking.EncoderValues(new_left_time, new_right_time, new_side_time, new_theta_time)
+        for i in range(len(values)):
+            self.rolling_buffer(values, timestamps, i)
 
-        left = self.linear_interp(self.previous_encoders.left, self.latest_encoders.left, self.previous_timestamps.left, self.latest_timestamps.left, self.latest_timestamps.theta)
-        right = self.linear_interp(self.previous_encoders.right, self.latest_encoders.right, self.previous_timestamps.right, self.latest_timestamps.right, self.latest_timestamps.theta)
-        side = self.linear_interp(self.previous_encoders.side, self.latest_encoders.side, self.previous_timestamps.side, self.latest_timestamps.side, self.latest_timestamps.theta)
+        return_values = [0.0] * len(values)
+        reference_time_index = len(values) - 1
+        for i in range(len(values) - 1):
+            return_values[i] = self.linear_interp(
+                self.previous_encoders[i],
+                self.latest_encoders[i],
+                self.previous_timestamps[i],
+                self.latest_timestamps[i],
+                self.latest_timestamps[reference_time_index])
+        return_values[reference_time_index] = values[reference_time_index]
 
-        return Tracking.EncoderValues(left, right, side, encoders.theta)
+        return return_values
 
-    def update_location(self, encoders: EncoderValues, timestamps: EncoderValues):
+    def update_location(self, values, timestamps):
+        '''
+        ### Arguments
+            values: array of 4 values: left(REV), right(REV), side(REV), theta(RADIANS)
+            timestamps: array of 4 timestamps: left(MS), right(MS), side(MS), theta(MS)
+        '''
         if self._enable_resampling:
-            resampled_encoders = self.resample(encoders, timestamps)
+            resampled = self.resample(values, timestamps)
         else:
-            resampled_encoders = encoders
+            resampled = values
 
         # Unpack inputs
-        left_position = resampled_encoders.left
-        right_position = resampled_encoders.right
-        side_position = resampled_encoders.side
-        theta = resampled_encoders.theta
+        left_position = resampled[0]
+        right_position = resampled[1]
+        side_position = resampled[2]
+        theta = resampled[3]
 
         # position here is the rotoation of th wheel so needs to be multiplied by any gear ratio if present
         left_position *= self.fwd_gear_ratio
@@ -266,6 +278,9 @@ class Tracking:
         self.theta = radians(InertialWrapper.to_angle(orientation.heading))
         self.previous_theta = self.theta
         self.set_sensor_heading(orientation.heading)
+        self.init_rolling_buffers(
+            Tracking.EncoderValues(0.0, 0.0, 0.0, Tracking.gyro_theta(self.inertial)),
+            Tracking.EncoderValues(0, 0, 0, self.inertial.timestamp()), 3)
 
     def trajectory_to_point(self, x, y):
         distance = sqrt((x - self.x) ** 2 + (y - self.y) ** 2)
@@ -306,9 +321,11 @@ class Tracking:
             start_time = self.timer.system_high_res()
 
             if (self._is_enabled):
-                encoders = Tracking.EncoderValues(left_drive.position(RotationUnits.REV), right_drive.position(RotationUnits.REV), 0.0, Tracking.gyro_theta(inertial))
-                timestamps = Tracking.EncoderValues(self.avg_motor_times(left_drive), self.avg_motor_times(right_drive), 0, inertial.timestamp())
-                self.update_location(encoders, timestamps)
+                #encoders = Tracking.EncoderValues(left_drive.position(RotationUnits.REV), right_drive.position(RotationUnits.REV), 0.0, Tracking.gyro_theta(inertial))
+                #timestamps = Tracking.EncoderValues(self.avg_motor_times(left_drive), self.avg_motor_times(right_drive), 0, inertial.timestamp())
+                self.update_location(
+                    [left_drive.position(RotationUnits.REV), right_drive.position(RotationUnits.REV), 0.0, Tracking.gyro_theta(inertial)],
+                    [self.avg_motor_times(left_drive), self.avg_motor_times(right_drive), 0, inertial.timestamp()])
 
             end_time = self.timer.system_high_res()
             time_sum += end_time - start_time
@@ -328,9 +345,11 @@ class Tracking:
             start_time = self.timer.system_high_res()
 
             if (self._is_enabled):
-                encoders = Tracking.EncoderValues(rotation_fwd.position(RotationUnits.REV), 0.0, rotation_side.position(RotationUnits.REV), Tracking.gyro_theta(inertial))
-                timestamps = Tracking.EncoderValues(rotation_fwd.timestamp(), 0, rotation_side.timestamp(), inertial.timestamp())
-                self.update_location(encoders, timestamps)
+                #encoders = Tracking.EncoderValues(rotation_fwd.position(RotationUnits.REV), 0.0, rotation_side.position(RotationUnits.REV), Tracking.gyro_theta(inertial))
+                #timestamps = Tracking.EncoderValues(rotation_fwd.timestamp(), 0, rotation_side.timestamp(), inertial.timestamp())
+                self.update_location(
+                    [rotation_fwd.position(RotationUnits.REV), 0.0, rotation_side.position(RotationUnits.REV), Tracking.gyro_theta(inertial)],
+                    [rotation_fwd.timestamp(), 0, rotation_side.timestamp(), inertial.timestamp()])
 
             end_time = self.timer.system_high_res()
             time_sum += end_time - start_time
