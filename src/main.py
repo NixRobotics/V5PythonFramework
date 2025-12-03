@@ -11,12 +11,11 @@
 from vex import *
 import gc
 from math import pi, degrees, radians
-from inertialwrapper import InertialWrapper
-from driveproxy import DriveProxy
-from tracker import Tracking
-from smartdrvwrapper import SmartDriveWrapper
+from v5pythonlibrary import *
 
 brain=Brain()
+controller_1 = Controller(PRIMARY)
+
 l1 = Motor(Ports.PORT1, GearSetting.RATIO_18_1, True)
 l2 = Motor(Ports.PORT3, GearSetting.RATIO_18_1, True)
 left_drive = MotorGroup(l1, l2)
@@ -425,9 +424,16 @@ def user_control():
         raise RuntimeError("Tracker not initialized")
     tracker.enable()
 
+    drive_control = DriverControl(left_drive, right_drive, inertial)
+
+    loop_count = 200
     while True:
-        print_tracker(tracker)
-        wait(2, SECONDS)
+        drive_control.user_drivetrain(controller_1.axis3.position(), controller_1.axis1.position())
+        loop_count -= 1
+        if (loop_count <= 0):
+            print_tracker(tracker)
+            loop_count = 200
+        wait(10, MSEC)
 
 comp = Competition(user_control, autonomous)
 pre_autonomous()

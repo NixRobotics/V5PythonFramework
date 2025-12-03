@@ -4,16 +4,20 @@ from math import sin, cos, radians, degrees, atan2, sqrt
 from collections import namedtuple
 from inertialwrapper import InertialWrapper
 
-# Tracking class to calculate robot position using tracking wheels or motor encoders plus inertial sensor
-# Internally everything is based in meters and radians
-# To distinguish from VEX uses for various heading readings, we use the following terminology:
-# - ROTATION: continuous rotation value in degrees (can be positive or negative, no bounds)
-# - HEADING: bounded heading in degrees [0, 360)
-# - ANGLE: bounded angle in degrees (-180, +180]
-# - THETA: continuous rotation value in radians (can be positive or negative, no bounds). Same as ROTATION but in radians
-# THETA is used internally and converted to/from HEADING/ANGLE as needed
-# Note that  __init__() and update_location() assume that the gyro scale factor has already been applied to the inertial sensor readings
 class Tracking:
+    '''
+    ### Tracking class to calculate robot position using tracking wheels or motor encoders plus inertial sensor
+
+    Internally everything is based in meters and radians
+    To distinguish from VEX uses for various heading readings, we use the following terminology:
+    - ROTATION: continuous rotation value in degrees (can be positive or negative, no bounds)
+    - HEADING: bounded heading in degrees [0, 360)
+    - ANGLE: bounded angle in degrees (-180, +180]
+    - THETA: continuous rotation value in radians (can be positive or negative, no bounds). Same as ROTATION but in radians
+    THETA is used internally and converted to/from HEADING/ANGLE as needed
+    
+    Note that  __init__() and update_location() assume that the gyro scale factor has already been applied to the inertial sensor readings
+    '''
     
     Orientation = namedtuple('Orientation', ['x', 'y', 'heading'])
     
@@ -51,18 +55,20 @@ class Tracking:
     # SIDE_OFFSET is the distance from the robot center to the side tracking wheel, forward is positive
     DEFAULT_SIDE_OFFSET = 0.0 # mm
 
-    # Initializer
-    # @param x is initial NORTH position in MM
-    # @param y is initial EAST position in MM
-    # @param heading is initial true heading of robot in degrees [0, 360). 0 deg is NORTH
-    # @param configuration (optional) is the configuration of the wheels used for odometry
-    # @param inital_values (optional) is the initial values of the encoders used if not zero. Not that theta (heading) will be ignored at the moment
     def __init__(self,
                  devices,
                  orientation: Union[Orientation, None] = None,
                  configuration: Union[Configuration, None] = None,
                  initial_values: Union[EncoderValues, None] = None,
                  initial_timestamps: Union[EncoderValues, None] = None):
+        '''
+        ### Initializer
+        
+        :param devices: Description
+        :param orientation: Description
+        :type orientation: Union[Orientation, None]
+        :param configuration: Description
+        '''
         print('init')
 
         self._is_enabled = False
