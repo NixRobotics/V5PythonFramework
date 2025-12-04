@@ -344,7 +344,7 @@ class SmartDriveWrapper(SmartDrive):
         '''
         if units != RotationUnits.DEG:
             raise ValueError("SmartDriveWrapper.turn_to_heading(): Only DEGREES supported for units")
-        if units_v != PercentUnits.PERCENT:
+        if units_v != PercentUnits.PERCENT or units_v != VelocityUnits.PERCENT:
             raise ValueError("SmartDriveWrapper.turn_to_heading(): Only PERCENT supported for units_v")
 
         if velocity is not None:
@@ -445,6 +445,24 @@ class SmartDriveWrapper(SmartDrive):
         self.dp.set_drive_velocity(self._drive_velocity, units)
         super().set_drive_velocity(self._drive_velocity, units)
 
+    def set_drive_accleration(self, accel, units:VelocityPercentUnits = VelocityUnits.PERCENT):
+        '''
+        ### Set default acceleration for drive commands
+
+        This will be the accelertaion used for subsequent calls to drive
+
+        #### Arguments:
+            accel : The new acceleration in PERCENT per timestep
+            units : Only PERCENT is supported
+
+        #### Returns:
+            None
+        '''
+        if units is not PercentUnits.PERCENT and units is not VelocityUnits.PERCENT:
+            raise ValueError("SmartDriveWrapper.set_drive_velocity(): PERCENT supported for units")
+
+        self.dp.set_drive_acceleration(accel, units)
+
     def set_turn_velocity(self, velocity, units:VelocityPercentUnits=VelocityUnits.PERCENT):
         '''
         ### Set default velocity for turn commands
@@ -493,7 +511,7 @@ class SmartDriveWrapper(SmartDrive):
             None
         '''
         super().set_timeout(timeout, units)
-        if units == TimeUnits.SECONDS: timeout *= 1000
+        if units == TimeUnits.MSEC: timeout = timeout / 1000.0
         self.dp.set_timeout(timeout)
 
     def get_timeout(self):

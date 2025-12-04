@@ -17,6 +17,10 @@ class Tracking:
     THETA is used internally and converted to/from HEADING/ANGLE as needed
     
     Note that  __init__() and update_location() assume that the gyro scale factor has already been applied to the inertial sensor readings
+
+    :param devices: List of 3 devices in this order: [left motor group, right motor group, inertial] or [fwd tracker, side tracker, inertial]
+    :param (optional) orientation: Starting orientation consisting of an orientation tuple (x in mm, y in mm, heading in degrees)
+    :param (optional) configuration: Descriptor for tracking configuration. See set_configuration() for more details
     '''
     
     Orientation = namedtuple('Orientation', ['x', 'y', 'heading'])
@@ -61,14 +65,7 @@ class Tracking:
                  configuration: Union[Configuration, None] = None,
                  initial_values: Union[EncoderValues, None] = None,
                  initial_timestamps: Union[EncoderValues, None] = None):
-        '''
-        ### Initializer
-        
-        :param devices: Description
-        :param orientation: Description
-        :type orientation: Union[Orientation, None]
-        :param configuration: Description
-        '''
+
         print('init')
 
         self._is_enabled = False
@@ -121,6 +118,15 @@ class Tracking:
         self.this_thread = self.start_tracker(devices)
 
     def set_initial_values(self, initial_values: EncoderValues, initial_timestamps: EncoderValues):
+        '''
+        ### INTERNAL: Docstring for set_initial_values
+        
+        :param self: Description
+        :param initial_values: Description
+        :type initial_values: EncoderValues
+        :param initial_timestamps: Description
+        :type initial_timestamps: EncoderValues
+        '''
         self.previous_left_position = initial_values.left # revolutions
         self.previous_right_position = initial_values.right # revolutions
         self.previous_side_position = initial_values.side # revolutions
@@ -129,6 +135,16 @@ class Tracking:
         self.init_rolling_buffers(initial_values, initial_timestamps)
 
     def init_rolling_buffers(self, initial_values: Union[EncoderValues, None], initial_timestamps: Union[EncoderValues, None], mask = None):
+        '''
+        ### INTERNAL: Docstring for init_rolling_buffers
+        
+        :param self: Description
+        :param initial_values: Description
+        :type initial_values: Union[EncoderValues, None]
+        :param initial_timestamps: Description
+        :type initial_timestamps: Union[EncoderValues, None]
+        :param mask: Description
+        '''
         if initial_values is None or initial_timestamps is None:
             raise RuntimeError("Rolling Buffer: Initial Values and Timestamps Can Not Be None")
         for i in range(len(initial_values)):
@@ -139,6 +155,22 @@ class Tracking:
                 self.previous_timestamps[i] = self.latest_timestamps[i]
 
     def set_configuration(self, configuration: Configuration):
+        '''
+        ### Configuration initializers
+
+        :param configuration.fwd_wheel_size: Circumference of the forward odometry wheel in mm. Set to 0.0 if not present. If only one forward wheel is present,\
+            use left regardless if it is mounted on the left of the right of the robot. Motor tracking applies setting to both drivetrain sides
+        :param configuration.side_sheel_size: Circumference of the sideways odometry wheel in mm. Set to 0.0 if not present
+        :param configuration.fwd_gear_ratio: Is any gear ratio used between the wheel and the rotation sensor or motor
+        :param configuration.side_gear_ratio: Is any gear ratio used between the wheel and the rotation sensor
+        :param configuration.fwd_offset: Is the offset of the forward tracking wheel relative to the turning center of the robot. Positive is to RIGHT of robot, so\
+            wheels mounted on left of robot would be negative
+        :param configuration.side_offset: Is the offset of the sideways tracking wheel relative to the turning center of the robot. Positive side is to FRONT of robot,\
+            so wheels mounted towards the back of the robot would be negative
+        :param configuration.fwd_is_odom: If False left and right wheels are treated as the motor left and right MotorGroup encoders\
+            It is assumed that encoders are configured correctly such that FORWARD motion is positive for both left and right encoders and RIGHT motiion\
+            is positive to side/strafe encoder
+        '''
         self.fwd_is_odom = configuration.fwd_is_odom
         self.fwd_wheel_size = configuration.fwd_wheel_size
         self.fwd_gear_ratio = configuration.fwd_gear_ratio
@@ -149,22 +181,39 @@ class Tracking:
         self.side_offset = configuration.side_offset
    
     def enable(self, enabled = True):
+        '''
+        ### Docstring for enable
+        
+        :param self: Description
+        :param enabled: Description
+        '''
         self._is_enabled = enabled
 
     def enable_resampling(self, enabled = True):
+        '''
+        ### Docstring for enable_resampling
+        
+        :param self: Description
+        :param enabled: Description
+        '''
         self._enable_resampling = enabled
 
     def current_heading(self):
         '''
-        Returns internal theta (radians) in degrees heading [0, 360)
+        ### Gets current tracker heading in degrees (may differ from inertial sensor due to time lag)
 
-        Theoretically this is same as calling GyroHelper.gyro_heading()
+        Theoretically this is same as calling GyroHelper.gyro_heading(), but it will vary due to sampling time of the sensor and accumulator effects
+
+        :returns: Internal theta (radians) converted to degrees heading [0, 360)
+
         '''
         heading_deg = degrees(self.theta)
         return InertialWrapper.to_heading(heading_deg)
 
     def calc_timestep_arc_chord(self, x, y, theta, delta_forward, delta_side, delta_theta):
         '''
+        ### INTERNAL
+
         x, y, delta_forward, delta_side in MM
 
         theta, delta_theta in radians
@@ -197,6 +246,16 @@ class Tracking:
     
     # 0 is older, 1 is newer
     def linear_interp(self, s0, s1, t0, t1, t_ref):
+        '''
+        ### INTERNAL Docstring for linear_interp
+        
+        :param self: Description
+        :param s0: Description
+        :param s1: Description
+        :param t0: Description
+        :param t1: Description
+        :param t_ref: Description
+        '''
         if t1 == t0: return s1
         if t0 == t_ref: return s0
         if t1 == t_ref: return s1
@@ -204,6 +263,14 @@ class Tracking:
         return s_new
         
     def rolling_buffer(self, values, timestamps, index):
+        '''
+        ### INTERNAL Docstring for rolling_buffer
+        
+        :param self: Description
+        :param values: Description
+        :param timestamps: Description
+        :param index: Description
+        '''
         if self.previous_encoders is None or self.latest_encoders is None:
             raise RuntimeError("Previous Encoder Values Not Set")
         
@@ -214,6 +281,13 @@ class Tracking:
             self.latest_encoders[index] = values[index]
 
     def resample(self, values, timestamps):
+        '''
+        ### INTERNAL Docstring for resample
+        
+        :param self: Description
+        :param values: Description
+        :param timestamps: Description
+        '''
         # We attempt to align everything to the gyro, if that does not get updated we'll just use the latest values
         # gyro skips very infrequently so any anomolies from this should be minimal
 
@@ -236,6 +310,8 @@ class Tracking:
 
     def update_location(self, values, timestamps):
         '''
+        ### INTERNAL
+
         ### Arguments
             values: array of 4 values: left(REV), right(REV), side(REV), theta(RADIANS)
             timestamps: array of 4 timestamps: left(MS), right(MS), side(MS), theta(MS)
@@ -276,9 +352,21 @@ class Tracking:
         self.previous_theta = theta
     
     def get_orientation(self):
+        '''
+        ### Docstring for get_orientation
+        
+        :returns: Tracking.Orientation Tuple
+        '''
         return Tracking.Orientation(self.x, self.y, InertialWrapper.to_heading(degrees(self.theta)))
 
     def set_orientation(self, orientation: Orientation):
+        '''
+        ### Docstring for set_orientation
+        
+        :param self: Description
+        :param orientation: Description
+        :type orientation: Orientation
+        '''
         self.x = orientation.x
         self.y = orientation.y
         self.theta = radians(InertialWrapper.to_angle(orientation.heading))
@@ -289,24 +377,56 @@ class Tracking:
             Tracking.EncoderValues(0, 0, 0, self.inertial.timestamp()), 3)
 
     def trajectory_to_point(self, x, y):
+        '''
+        ### Docstring for trajectory_to_point
+        
+        :param self: Description
+        :param x: Description
+        :param y: Description
+        '''
         distance = sqrt((x - self.x) ** 2 + (y - self.y) ** 2)
         heading = InertialWrapper.to_heading(degrees(atan2(y - self.y, x - self.x)))
         return distance, heading
 
     @staticmethod
     def gyro_theta(sensor: InertialWrapper):
+        '''
+        ### Docstring for gyro_theta
+        
+        :param sensor: Description
+        :type sensor: InertialWrapper
+        '''
         return radians(Tracking.gyro_rotation(sensor))
 
     @staticmethod
     def gyro_rotation(sensor: InertialWrapper):
+        '''
+        ### Docstring for gyro_rotation
+        
+        :param sensor: Description
+        :type sensor: InertialWrapper
+        '''
         return sensor.rotation()
     
     def set_sensor_heading(self, heading):
+        '''
+        ### INTERNAL Docstring for set_sensor_heading
+        
+        :param self: Description
+        :param heading: Description
+        '''
         if self.inertial is None: return
         angle = InertialWrapper.to_angle(heading)
         self.inertial.set_rotation(angle, RotationUnits.DEG)
 
     def avg_motor_times(self, mg: MotorGroup):
+        '''
+        ### INTERNAL Docstring for avg_motor_times
+        
+        :param self: Description
+        :param mg: Description
+        :type mg: MotorGroup
+        '''
         num_motors = len(mg._motors)
         if num_motors == 0:
             raise RuntimeError("No Motors Found")
@@ -317,6 +437,17 @@ class Tracking:
         return sum
 
     def track_motors(self, left_drive: MotorGroup, right_drive: MotorGroup, inertial: InertialWrapper):
+        '''
+        ### INTERNAL Docstring for track_motors
+        
+        :param self: Description
+        :param left_drive: Description
+        :type left_drive: MotorGroup
+        :param right_drive: Description
+        :type right_drive: MotorGroup
+        :param inertial: Description
+        :type inertial: InertialWrapper
+        '''
         print("Tracker Using Motor Encoders")
         initial_encoders = Tracking.EncoderValues(left_drive.position(RotationUnits.REV), right_drive.position(RotationUnits.REV), 0.0, Tracking.gyro_theta(inertial))
         initial_timestamps = Tracking.EncoderValues(self.avg_motor_times(left_drive), self.avg_motor_times(right_drive), 0, inertial.timestamp())
@@ -341,6 +472,17 @@ class Tracking:
             wait(self.timestep, SECONDS)
 
     def track_odometry(self, rotation_fwd: Rotation, rotation_side: Rotation, inertial: InertialWrapper):
+        '''
+        ### INTERNAL Docstring for track_odometry
+        
+        :param self: Description
+        :param rotation_fwd: Description
+        :type rotation_fwd: Rotation
+        :param rotation_side: Description
+        :type rotation_side: Rotation
+        :param inertial: Description
+        :type inertial: InertialWrapper
+        '''
         print("Tracker Using Rotation Sensors")
         initial_encoders = Tracking.EncoderValues(rotation_fwd.position(RotationUnits.REV), 0.0, rotation_side.position(RotationUnits.REV), Tracking.gyro_theta(inertial))
         initial_timestamps = Tracking.EncoderValues(rotation_fwd.timestamp(), 0, rotation_side.timestamp(), inertial.timestamp())
@@ -365,6 +507,13 @@ class Tracking:
             wait(self.timestep, SECONDS)
 
     def tracker_thread(self, devices, unused):
+        '''
+        ### INTERNAL Docstring for tracker_thread
+        
+        :param self: Description
+        :param devices: Description
+        :param unused: Description
+        '''
         if len(devices) != 3:
             print("missing prequisite number of devices (3)")
             return
@@ -377,4 +526,10 @@ class Tracking:
             self.track_odometry(devices[0], devices[1], devices[2])
 
     def start_tracker(self, devices):
+        '''
+        ### Docstring for start_tracker
+        
+        :param self: Description
+        :param devices: Description
+        '''
         return Thread(self.tracker_thread, (devices, 0))

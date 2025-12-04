@@ -77,8 +77,8 @@ class DriveProxy:
         self.drive_pid_constants.max_output = velocity / 100.0
         return True
 
-    def set_drive_acceleration(self, acceleration, unit):
-        if (unit is not PercentUnits.PERCENT): raise ValueError("Units must be PERCENT")
+    def set_drive_acceleration(self, acceleration, unit: VelocityPercentUnits):
+        if (unit is not PercentUnits.PERCENT and unit is not VelocityUnits.PERCENT): raise ValueError("Units must be PERCENT")
         self._concurrency_check()
         self.drive_pid_constants.max_ramp = acceleration / 100.0
         return True

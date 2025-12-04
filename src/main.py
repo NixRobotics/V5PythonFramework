@@ -358,19 +358,19 @@ def auton4_circle_drive(drive_train: DriveProxy, tracker: Tracking):
         wait(50, MSEC)
 
 def test_concurrent(drive_train: DriveProxy, tracker: Tracking):
-    print(drive_train.turn_for(RIGHT, 45, DEGREES, wait = False))
+    print(drive_train.turn_for(RIGHT, 90, DEGREES, wait = False))
     while not drive_train.is_done(): wait(10, MSEC)
     print_tracker(tracker)
-    print(drive_train.turn_for(LEFT, 45, DEGREES, wait = True))
+    print(drive_train.turn_for(LEFT, 90, DEGREES, wait = True))
     print_tracker(tracker)
-    print(drive_train.drive_for(FORWARD, 50, MM, wait = False))
+    print(drive_train.drive_for(FORWARD, 100, MM, wait = False))
     try:
         drive_train.set_drive_velocity(10, PERCENT)
     except:
         print("Call to set_velocity failed")
     while not drive_train.is_done():wait(10, MSEC)
     print_tracker(tracker)
-    print(drive_train.drive_for(REVERSE, 50, MM, wait = True))
+    print(drive_train.drive_for(REVERSE, 100, MM, wait = True))
     print_tracker(tracker)
 
 def autonomous():

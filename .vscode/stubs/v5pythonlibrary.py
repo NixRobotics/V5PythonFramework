@@ -586,6 +586,21 @@ class SmartDriveWrapper(SmartDrive):
         '''
         pass
 
+    def set_drive_accleration(self, accel, units:VelocityPercentUnits = VelocityUnits.PERCENT):
+        '''
+        ### Set default acceleration for drive commands
+
+        This will be the accelertaion used for subsequent calls to drive
+
+        #### Arguments:
+            accel : The new acceleration in PERCENT per timestep
+            units : Only PERCENT is supported
+
+        #### Returns:
+            None
+        '''
+        pass
+
     def set_turn_velocity(self, velocity, units:VelocityPercentUnits=VelocityUnits.PERCENT):
         '''
         ### Set default velocity for turn commands
