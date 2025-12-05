@@ -364,6 +364,20 @@ class SmartDriveWrapper(SmartDrive):
     def drive_for(self, direction, distance, units = DistanceUnits.MM,
                   velocity=None, units_v: VelocityUnits.VelocityUnits | PercentUnits.PercentUnits = VelocityUnits.PERCENT,
                   wait=True):
+        '''
+        ### Docstring for drive_for
+        
+        :param direction: Description
+        :param distance: Description
+        :param units: Description
+        :param velocity: Description
+        :param units_v: Description
+        :type units_v: VelocityUnits.VelocityUnits | PercentUnits.PercentUnits
+        :param wait: Description
+        :return: Description
+        :rtype: Any | Literal[True]
+        '''
+        if velocity is not None: raise NotImplementedError("SmartDriveWrapper.drive_for(): velocity parameter not supported, use set_drive_velocity() instead")
         self.dp.drive_for(direction, distance, units, heading=None, settle_error=None, timeout=None, wait=wait)
         #return super().drive_for(direction, distance, units, velocity, units_v, wait)
 
@@ -371,7 +385,27 @@ class SmartDriveWrapper(SmartDrive):
                   velocity=None, units_v: VelocityUnits.VelocityUnits | PercentUnits.PercentUnits = VelocityUnits.PERCENT,
                   heading = None, units_h = RotationUnits.DEG,
                   wait=True):
-        return super().drive_for(direction, distance, units, velocity, units_v, wait)
+        '''
+        ### Docstring for drive_straight_for
+        
+        :param direction: Description
+        :param distance: Description
+        :param units: Description
+        :param velocity: Description
+        :param units_v: Description
+        :type units_v: VelocityUnits.VelocityUnits | PercentUnits.PercentUnits
+        :param heading: Description
+        :param units_h: Description
+        :param wait: Description
+        :return: Description
+        :rtype: Any | Literal[True]
+        '''
+        if velocity is not None: raise NotImplementedError("SmartDriveWrapper.drive_for(): velocity parameter not supported, use set_drive_velocity() instead")
+        if velocity is not None and units_v != VelocityUnits.PERCENT and units_v != PercentUnits.PERCENT:
+            raise ValueError("SmartDriveWrapper.drive_straight_for(): Only PERCENT supported for units_v")
+        if heading is not None and units_h != RotationUnits.DEG:
+            raise ValueError("SmartDriveWrapper.drive_straight_for(): Only DEGREES supported for units_h")
+        self.dp.drive_for(direction, distance, units, heading=heading, settle_error=None, timeout=None, wait=wait)
 
     def drive(self, direction, velocity=None, units:VelocityPercentUnits=VelocityUnits.RPM):
         '''
