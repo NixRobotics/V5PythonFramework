@@ -281,7 +281,7 @@ class SmartDriveWrapper(SmartDrive):
         '''
         if units != RotationUnits.DEG:
             raise ValueError("SmartDriveWrapper.turn_to_heading(): Only DEGREES supported for units")
-        if units_v != PercentUnits.PERCENT:
+        if units_v != PercentUnits.PERCENT and units_v != VelocityUnits.PERCENT:
             raise ValueError("SmartDriveWrapper.turn_to_heading(): Only PERCENT supported for units_v")
 
         if velocity is not None:
@@ -312,7 +312,7 @@ class SmartDriveWrapper(SmartDrive):
         '''
         if units != RotationUnits.DEG:
             raise ValueError("SmartDriveWrapper.turn_to_heading(): Only DEGREES supported for units")
-        if units_v != PercentUnits.PERCENT:
+        if units_v != PercentUnits.PERCENT and units_v != VelocityUnits.PERCENT:
             raise ValueError("SmartDriveWrapper.turn_to_heading(): Only PERCENT supported for units_v")
 
         if velocity is not None:
@@ -344,7 +344,7 @@ class SmartDriveWrapper(SmartDrive):
         '''
         if units != RotationUnits.DEG:
             raise ValueError("SmartDriveWrapper.turn_to_heading(): Only DEGREES supported for units")
-        if units_v != PercentUnits.PERCENT or units_v != VelocityUnits.PERCENT:
+        if units_v != PercentUnits.PERCENT and units_v != VelocityUnits.PERCENT:
             raise ValueError("SmartDriveWrapper.turn_to_heading(): Only PERCENT supported for units_v")
 
         if velocity is not None:

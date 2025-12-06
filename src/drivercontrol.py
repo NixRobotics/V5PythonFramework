@@ -225,8 +225,10 @@ class DriverControl:
         control_turn = self.controller_deadband(control_turn, 4.0)
 
         # Select auto follow heading mode if enabled and we are not commanded to turn, and are not waiting on a turn to finish
+        # TODO: add case for when coasting to stop, but ramp control is still active
         if (self.enable_drive_straight and control_speed != 0.0 and control_turn == 0.0 and self.last_turn == 0.0):
-            auto_speed, auto_turn = self.drive_straight(control_speed)
+            detwitch_speed = control_speed * self.drive_max / 100.0
+            auto_speed, auto_turn = self.drive_straight(detwitch_speed)
             safe_speed, _ = self.drivetrain_ramp_limit(auto_speed, 0, self.enable_ramp_control)
             safe_turn = auto_turn
         # Else just follow along with what the driver is doing
