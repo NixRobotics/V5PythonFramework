@@ -4,6 +4,7 @@ from inertialwrapper import InertialWrapper
 class DriverControl:
     '''
     ### DriverControl class
+
     This class implements driver control for a tank drive robot using a left and right motor group and an inertial sensor.
     It includes features such as:
     - Deadband handling to prevent motor creep
@@ -11,6 +12,10 @@ class DriverControl:
     - Detwitching to reduce turn sensitivity at low speeds
     - Gyro-based straight driving assistance
     - Selctable brake modes
+
+    :param left_motor_group: MotorGroup for the left side of the drivetrain
+    :param right_motor_group: MotorGroup for the right side of the drivetrain
+    :param inertial_sensor: InertialWrapper for the gyro sensor
     '''
     # Constants to convert percent to volt for drivetrain
     MOTOR_MAXVOLT = 11.5 # volts
@@ -46,6 +51,7 @@ class DriverControl:
 
         # Enables
         self.enable_drive_straight = False
+        self.enable_heading_lock = False
         self.enable_percent_drive = False
         self.enable_brake_mode = False
         self.enable_ramp_control = True
@@ -60,10 +66,12 @@ class DriverControl:
         self.drivetrain_running = False
 
         self.follow_heading = None
+        self.follow_heading_Kp = 2.0
 
     def drivetrain_detwitch(self, speed, turn, enabled):
         '''
-        ### DETWITCH - reduce turn sensitiviy when robot is moving slowly (turning in place)
+        ### (INTERNAL) )ETWITCH - reduce turn sensitiviy when robot is moving slowly (turning in place)
+
         NOTE: speed is not altered only turn
 
         :param speed: speed in percent - from -100 to +100 (full reverse to full forward)
@@ -96,7 +104,7 @@ class DriverControl:
 
     def drivetrain_ramp_limit(self, speed, turn, enabled):
         '''
-        ### RAMP LIMIT - limit how fast we can go from one extreme to another on the joysticks
+        ###  (INTERNAL) RAMP LIMIT - limit how fast we can go from one extreme to another on the joysticks
 
         The max range is 200 percent (ie from -100 to +100). A value of 20 for MAX_CONTROL_RAMP would take 0.1s to go from full
         forward to full reverse, or from full left to full right turn
@@ -126,7 +134,7 @@ class DriverControl:
 
     def clamp(self, input, clamp_value = 100.0):
         '''
-        ### CLAMPING - limits output to range -clamp_value, clamp_value
+        ###  (INTERNAL) CLAMPING - limits output to range -clamp_value, clamp_value
         
         :param input: input in percent
         :param clamp_value (optional): clamp_value - defaults to 100 percent
@@ -137,6 +145,14 @@ class DriverControl:
     
     # CONTROLLER_DEADBAND - used in case controller has some drift, mostly for turning
     def controller_deadband(self, input, deadband, max_range = 100.0):
+        '''
+        ###  (INTERNAL) Docstring for controller_deadband
+        
+        :param self: Description
+        :param input: Description
+        :param deadband: Description
+        :param max_range: Description
+        '''
         output = 0.0
         scale = max_range / (max_range - deadband)
         if (abs(input) < deadband):
@@ -150,10 +166,21 @@ class DriverControl:
     
     # GYRO_ROTATION - get the current rotation value in degrees and scale by the gyro scale
     def gyro_rotation(self):
+        '''
+        ### (INTERNAL) Docstring for gyro_rotation
+        
+        :param self: Description
+        '''
         return self.gyro.rotation()
 
     # DRIVE_STRAIGHT - will attempt to follow gyro heading when enabled
     def drive_straight(self, speed):
+        '''
+        ### (INTERNAL) Docstring for drive_straight
+        
+        :param self: Description
+        :param speed: Description
+        '''
         if (self.gyro is None or not self.gyro.installed):
             return speed, 0.0
         
@@ -163,7 +190,7 @@ class DriverControl:
             return speed, 0.0
 
         error = self.follow_heading - self.gyro_rotation()
-        Kp = 1.0
+        Kp = self.follow_heading_Kp
         turn = error * Kp
 
         # Note: motors turn 10 revolutions per robot 360deg rotation, or 10 * 24 / 60 = 4 wheel rotations
@@ -176,29 +203,72 @@ class DriverControl:
     
     # CANCEL_DRIVE_STRAIGHT - resets the heading
     def cancel_drive_straight(self):
-        if (self.follow_heading is not None):
+        '''
+        ### (INTERNAL) Docstring for cancel_drive_straight
+        
+        :param self: Description
+        '''
+        if (not self.enable_heading_lock and self.follow_heading is not None):
             # print("Follow cancelled")
             self.follow_heading = None
 
     def set_mode(self,
                  enable_drive_straight = None,
+                 enable_heading_lock = None,
                  enable_percent_drive = None,
                  enable_brake_mode = None,
                  enable_ramp_control = None,
-                 enable_detwitch = None):
+                 enable_detwitch = None,
+                 follow_heading = None,
+                 follow_heading_Kp = None):
+        '''
+        ### Docstring for set_mode
+        
+        :param enable_drive_straight: Description
+        :param enable_heading_lock: Description
+        :param enable_percent_drive: Description
+        :param enable_brake_mode: Description
+        :param enable_ramp_control: Description
+        :param enable_detwitch: Description
+        :param follow_heading: Description
+        :param follow_heading_Kp: Description
+        '''
         
         if enable_drive_straight is not None: self.enable_drive_straight = enable_drive_straight
+        if enable_heading_lock is not None: self.enable_heading_lock = enable_heading_lock
         if enable_percent_drive is not None: self.enable_percent_drive = enable_percent_drive
         if enable_brake_mode is not None: self.enable_brake_mode = enable_brake_mode
         if enable_ramp_control is not None: self.enable_ramp_control = enable_ramp_control
         if enable_detwitch is not None: self.enable_detwitch = enable_detwitch
 
+        if enable_heading_lock is not None:
+            if enable_heading_lock:
+                self.follow_heading = follow_heading
+            else:
+                self.follow_heading = None
+
+        if follow_heading_Kp is not None: self.follow_heading_Kp = follow_heading_Kp
+
     def set_speed_limits(self, drive_max = None, turn_max = None, ramp_max = None):
+        '''
+        ### Docstring for set_speed_limits
+        
+        :param drive_max: Description
+        :param turn_max: Description
+        :param ramp_max: Description
+        '''
         if drive_max is not None: self.drive_max = drive_max
         if turn_max is not None: self.turn_max = turn_max
         if ramp_max is not None: self.ramp_max = ramp_max
 
     def set_detwitch_params(self, pivot_max_turn = None, pivot_min_drive_speed = None, full_turn_drive_speed = None):
+        '''
+        ### Docstring for set_detwitch_params
+        
+        :param pivot_max_turn: Description
+        :param pivot_min_drive_speed: Description
+        :param full_turn_drive_speed: Description
+        '''
         if pivot_max_turn is not None: self.pivot_max_turn = pivot_max_turn
         if pivot_min_drive_speed is not None: self.pivot_min_drive_speed = pivot_min_drive_speed
         if full_turn_drive_speed is not None: self.full_turn_drive_speed = full_turn_drive_speed
@@ -226,7 +296,7 @@ class DriverControl:
 
         # Select auto follow heading mode if enabled and we are not commanded to turn, and are not waiting on a turn to finish
         # TODO: add case for when coasting to stop, but ramp control is still active
-        if (self.enable_drive_straight and control_speed != 0.0 and control_turn == 0.0 and self.last_turn == 0.0):
+        if (self.enable_heading_lock or (self.enable_drive_straight and (control_speed != 0.0 or self.last_speed != 0.0))) and control_turn == 0.0 and self.last_turn == 0.0:
             detwitch_speed = control_speed * self.drive_max / 100.0
             auto_speed, auto_turn = self.drive_straight(detwitch_speed)
             safe_speed, _ = self.drivetrain_ramp_limit(auto_speed, 0, self.enable_ramp_control)

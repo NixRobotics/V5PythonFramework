@@ -376,16 +376,27 @@ class Tracking:
             Tracking.EncoderValues(0.0, 0.0, 0.0, Tracking.gyro_theta(self.inertial)),
             Tracking.EncoderValues(0, 0, 0, self.inertial.timestamp()), 3)
 
-    def trajectory_to_point(self, x, y):
+    def trajectory_to_point(self, x, y, reverse = False):
         '''
-        ### Docstring for trajectory_to_point
+        ### Returns the distance (in MM) and relative heading (in DEGREES) to the specified coordinate.
+
+        By default the robot is assumed to be driving forward to the target point. Set the "reverse" argument to\
+        True if the robot needs to reverse to the target.
         
-        :param self: Description
-        :param x: Description
-        :param y: Description
+        :param x: X or NORTH-SOUTH axis coordinate in MM
+        :param y: Y or EAST-WEST axis coordinate in MM
+        :param (optional) reverse: Indicates that the robot will drive in reverse
+
+        :returns distance, heading: Tuple of distance in MM and relative heading in DEGREES to target.\
+        If "reverse" is True then distance will be negated and the heading will reflect the direction the\
+        front of the robot needs to be pointing meaning heading-180
         '''
         distance = sqrt((x - self.x) ** 2 + (y - self.y) ** 2)
         heading = InertialWrapper.to_heading(degrees(atan2(y - self.y, x - self.x)))
+        if reverse is True:
+            distance = -distance
+            heading = InertialWrapper.to_heading(heading + 180.0)
+
         return distance, heading
 
     @staticmethod

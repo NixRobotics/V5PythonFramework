@@ -30,7 +30,7 @@ all_motors = [l1, l2, r1, r2]
 GYRO_SCALE_FOR_READOUT = 362.0/360.0
 inertial = InertialWrapper(Ports.PORT5, GYRO_SCALE_FOR_READOUT)
 
-USING_TRACKING_WHEELS = True
+USING_TRACKING_WHEELS = False
 USING_RESAMPLING = True
 
 if USING_TRACKING_WHEELS:
@@ -116,9 +116,9 @@ def pre_autonomous():
 
     ROBOT_INITIALIZED = True
 
-def print_tracker(tracker: Tracking, x = 0.0, y = 0.0):
+def print_tracker(tracker: Tracking, x = 0.0, y = 0.0, reverse = False):
     orientation = tracker.get_orientation()
-    origin_distance, origin_heading = tracker.trajectory_to_point(x, y)
+    origin_distance, origin_heading = tracker.trajectory_to_point(x, y, reverse=reverse)
     print("X: {:.1f} mm, Y: {:.1f} mm, Heading: {:.2f} deg".format(orientation.x, orientation.y, orientation.heading))
     print(" - To Point: Distance: {:.1f} mm, Heading: {:.2f} deg".format(origin_distance, origin_heading))
     #print(" - Perf: {:.3f}us, {},{},{},{}".format(
@@ -176,7 +176,6 @@ def auton3_drive_to_points_long(drive_train: DriveProxy, tracker:Tracking):
     print("auton3_drive_to_points_long")
     print_tracker(tracker)
 
-    '''
     x_near = 0.0
     x_far = 2.0 * 600.0
 
@@ -184,23 +183,24 @@ def auton3_drive_to_points_long(drive_train: DriveProxy, tracker:Tracking):
     y_right = 1.0 * 600.0
 
     points = [
+        [x_near, y_left], # start point
         [x_far, y_left],
         [x_far, y_right],
         [x_near, y_right],
         [x_near, y_left]
     ]
     '''
+    # field tiles are 600mm across
+    x_near = 1.5 * 600.0
+    x_far = 4.5 * 600.0
 
-    # field tiles are 600mm across (not 18")
-    x_near = 0.0
-    x_far = 3.0 * 600.0
-
-    y_far_left = -1.5 * 600.0
-    y_mid_left = 0.0
-    y_mid_right = 2.0 * 600.0
-    y_far_right = 3.5 * 600.0
+    y_far_left = 0.5 * 600.0
+    y_mid_left = 2.0
+    y_mid_right = 4.0 * 600.0
+    y_far_right = 5.5 * 600.0
 
     points = [
+        [x_near, y_mid_left], # start point
         [x_far, y_mid_left],
         [x_far, y_mid_right],
         [x_near, y_mid_right],
@@ -210,8 +210,10 @@ def auton3_drive_to_points_long(drive_train: DriveProxy, tracker:Tracking):
         [x_near, y_far_right],
         [x_near, y_mid_left]
     ]
+    '''
 
-    controller1 = Controller()
+    start_point = points.pop(0) # remove first point as that is the starting point
+    tracker.set_orientation(Tracking.Orientation(start_point[0], start_point[1], 0.0))
 
     for i in range(4):
         for point in points:
@@ -219,25 +221,25 @@ def auton3_drive_to_points_long(drive_train: DriveProxy, tracker:Tracking):
             print("----- Start Drive", i, point)
             x = point[0]
             y = point[1]
-            print_tracker(tracker, x, y)
-            print(inertial.rotation())
-            #while not controller1.buttonA.pressing():
-            #    wait(10, MSEC)
-            distance, heading = tracker.trajectory_to_point(x, y)
-            timeout = 1.0 + distance / (drive_train.linear_speed() * 1000.0) # convert to MM/s and pad with 1 sec
+            print_tracker(tracker, x, y,reverse=True)
+            print("inertial rotation:",  inertial.rotation())
+
+            distance, heading = tracker.trajectory_to_point(x, y,reverse=True)
+            print(" START TURN")
             drive_train.turn_to_heading(heading, settle_error=1.0, timeout=1.0)
-            print_tracker(tracker, x, y)
-            #while not controller1.buttonA.pressing():
-            #    wait(10, MSEC)
-            distance, heading = tracker.trajectory_to_point(x, y)
+            print_tracker(tracker, x, y,reverse=True)
+
+            distance, heading = tracker.trajectory_to_point(x, y,reverse=True)
+            timeout = 1.0 + abs(distance / (drive_train.linear_speed() * 1000.0)) # convert to MM/s and pad with 1 sec
+            print(" START DRIVE")
             drive_train.drive_for(FORWARD, distance, MM, heading, timeout=timeout)
             wait(0.1, SECONDS)
-            print_tracker(tracker, x, y)
+            print_tracker(tracker, x, y,reverse=True)
 
     print("Start Turn")
     drive_train.turn_to_heading(0.0, settle_error=0.25, timeout=2.0)
     wait(0.1, SECONDS)
-    print_tracker(tracker, x_near, y_mid_left)
+    print_tracker(tracker, start_point[0], start_point[1])
 
 def OnTimeout():
     pass
@@ -400,10 +402,10 @@ def autonomous():
     # calibration_tracking_wheels()
     # auton1_drive_straight(drive_train, tracker)
     # auton2_drive_to_points(drive_train, tracker)
-    # auton3_drive_to_points_long(drive_train, tracker)
+    auton3_drive_to_points_long(drive_train, tracker)
     # auton4_circle_drive(drive_train, tracker)
     # auton5_circle_follow(drive_train, tracker)
-    test_concurrent(drive_train, tracker)
+    # test_concurrent(drive_train, tracker)
 
     print("auton done")
 
@@ -425,6 +427,8 @@ def user_control():
     tracker.enable()
 
     drive_control = DriverControl(left_drive, right_drive, inertial)
+    drive_control.set_mode(follow_heading_Kp=2.0)
+    drive_control.set_mode(enable_drive_straight=True, enable_heading_lock=False, follow_heading=0.0)
 
     loop_count = 200
     while True:

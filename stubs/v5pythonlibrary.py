@@ -178,37 +178,106 @@ class Tracking:
         pass
 
     def set_configuration(self, configuration: Configuration):
+        '''
+        ### Configuration initializers
+
+        :param configuration.fwd_wheel_size: Circumference of the forward odometry wheel in mm. Set to 0.0 if not present. If only one forward wheel is present,\
+            use left regardless if it is mounted on the left of the right of the robot. Motor tracking applies setting to both drivetrain sides
+        :param configuration.side_sheel_size: Circumference of the sideways odometry wheel in mm. Set to 0.0 if not present
+        :param configuration.fwd_gear_ratio: Is any gear ratio used between the wheel and the rotation sensor or motor
+        :param configuration.side_gear_ratio: Is any gear ratio used between the wheel and the rotation sensor
+        :param configuration.fwd_offset: Is the offset of the forward tracking wheel relative to the turning center of the robot. Positive is to RIGHT of robot, so\
+            wheels mounted on left of robot would be negative
+        :param configuration.side_offset: Is the offset of the sideways tracking wheel relative to the turning center of the robot. Positive side is to FRONT of robot,\
+            so wheels mounted towards the back of the robot would be negative
+        :param configuration.fwd_is_odom: If False left and right wheels are treated as the motor left and right MotorGroup encoders\
+            It is assumed that encoders are configured correctly such that FORWARD motion is positive for both left and right encoders and RIGHT motiion\
+            is positive to side/strafe encoder
+        '''
         pass
    
     def enable(self, enabled = True):
+        '''
+        ### Docstring for enable
+        
+        :param self: Description
+        :param enabled: Description
+        '''
         pass
 
     def enable_resampling(self, enabled = True):
+        '''
+        ### Docstring for enable_resampling
+        
+        :param self: Description
+        :param enabled: Description
+        '''
         pass
 
     def current_heading(self):
         '''
-        Returns internal theta (radians) in degrees heading [0, 360)
+        ### Gets current tracker heading in degrees (may differ from inertial sensor due to time lag)
 
-        Theoretically this is same as calling GyroHelper.gyro_heading()
+        Theoretically this is same as calling GyroHelper.gyro_heading(), but it will vary due to sampling time of the sensor and accumulator effects
+
+        :returns: Internal theta (radians) converted to degrees heading [0, 360)
+
         '''
         return 0.0
         
     def get_orientation(self):
+        '''
+        ### Docstring for get_orientation
+        
+        :returns: Tracking.Orientation Tuple
+        '''
         return Tracking.Orientation(0.0, 0.0, 0.0)
 
     def set_orientation(self, orientation: Orientation):
+        '''
+        ### Docstring for set_orientation
+        
+        :param self: Description
+        :param orientation: Description
+        :type orientation: Orientation
+        '''
         pass
 
-    def trajectory_to_point(self, x, y):
+    def trajectory_to_point(self, x, y, reverse = False):
+        '''
+        ### Returns the distance (in MM) and relative heading (in DEGREES) to the specified coordinate.
+
+        By default the robot is assumed to be driving forward to the target point. Set the "reverse" argument to\
+        True if the robot needs to reverse to the target.
+        
+        :param x: X or NORTH-SOUTH axis coordinate in MM
+        :param y: Y or EAST-WEST axis coordinate in MM
+        :param (optional) reverse: Indicates that the robot will drive in reverse
+
+        :returns distance, heading: Tuple of distance in MM and relative heading in DEGREES to target.\
+        If "reverse" is True then distance will be negated and the heading will reflect the direction the\
+        front of the robot needs to be pointing meaning heading-180
+        '''
         return 0.0, 0.0
 
     @staticmethod
     def gyro_theta(sensor: InertialWrapper):
+        '''
+        ### Docstring for gyro_theta
+        
+        :param sensor: Description
+        :type sensor: InertialWrapper
+        '''
         return 0.0
 
     @staticmethod
     def gyro_rotation(sensor: InertialWrapper):
+        '''
+        ### Docstring for gyro_rotation
+        
+        :param sensor: Description
+        :type sensor: InertialWrapper
+        '''
         return 0.0
 
 class SmartDriveWrapper(SmartDrive):
@@ -675,6 +744,7 @@ class SmartDriveWrapper(SmartDrive):
 class DriverControl:
     '''
     ### DriverControl class
+
     This class implements driver control for a tank drive robot using a left and right motor group and an inertial sensor.
     It includes features such as:
     - Deadband handling to prevent motor creep
@@ -682,25 +752,55 @@ class DriverControl:
     - Detwitching to reduce turn sensitivity at low speeds
     - Gyro-based straight driving assistance
     - Selctable brake modes
+
+    :param left_motor_group: MotorGroup for the left side of the drivetrain
+    :param right_motor_group: MotorGroup for the right side of the drivetrain
+    :param inertial_sensor: InertialWrapper for the gyro sensor
     '''
     def __init__(self, left_motor_group: MotorGroup, right_motor_group: MotorGroup, inertial_sensor: InertialWrapper):
         pass
 
     def set_mode(self,
                  enable_drive_straight = None,
+                 enable_heading_lock = None,
                  enable_percent_drive = None,
                  enable_brake_mode = None,
                  enable_ramp_control = None,
-                 enable_detwitch = None):
+                 enable_detwitch = None,
+                 follow_heading = None,
+                 follow_heading_Kp = None):
+        '''
+        ### Docstring for set_mode
         
+        :param enable_drive_straight: Description
+        :param enable_heading_lock: Description
+        :param enable_percent_drive: Description
+        :param enable_brake_mode: Description
+        :param enable_ramp_control: Description
+        :param enable_detwitch: Description
+        :param follow_heading: Description
+        :param follow_heading_Kp: Description
+        '''
         pass
 
     def set_speed_limits(self, drive_max = None, turn_max = None, ramp_max = None):
+        '''
+        ### Docstring for set_speed_limits
         
+        :param drive_max: Description
+        :param turn_max: Description
+        :param ramp_max: Description
+        '''      
         pass
 
     def set_detwitch_params(self, pivot_max_turn = None, pivot_min_drive_speed = None, full_turn_drive_speed = None):
+        '''
+        ### Docstring for set_detwitch_params
         
+        :param pivot_max_turn: Description
+        :param pivot_min_drive_speed: Description
+        :param full_turn_drive_speed: Description
+        '''        
         pass
 
     def user_drivetrain(self, control_speed, control_turn):
