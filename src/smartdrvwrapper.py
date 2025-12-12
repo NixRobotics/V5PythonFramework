@@ -325,11 +325,16 @@ class SmartDriveWrapper(SmartDrive):
                   velocity=None, units_v: VelocityUnits.VelocityUnits | PercentUnits.PercentUnits = VelocityUnits.PERCENT,
                   wait=True):
         '''
-        ### Docstring for drive_for
+        ### Drives the robot for the distance specified
+
+        If velocity is not specified the value provided by set_drive_velocity() will be used.
+
+        Internally the function uses the wheelSize and externalGearRatio specified upon object creation to determine how
+        many revolutions the motor needs to turn for, so make sure these are set correctly
         
-        :param direction: Description
-        :param distance: Description
-        :param units: Description
+        :param direction: FOWARD or REVERSE
+        :param distance: Distnace in MM the robot should drive. Providing negative distance will drive in the opposite direction specified by the direction parameter
+        :param (optional) units: Only MM supported
         :param velocity: Description
         :param units_v: Description
         :type units_v: VelocityUnits.VelocityUnits | PercentUnits.PercentUnits
@@ -376,46 +381,23 @@ class SmartDriveWrapper(SmartDrive):
     def is_turning(self):
         '''
         ### DEPRECATED: Use is_done()
-    
-        ### Returns the current status of the turn_to_heading, turn_to_rotation or turn_for command
-        This function is used when False has been passed as the wait parameter to turn_to_heading or turn_for\\
-        It will return True if the drivetrain is still moving or False if it has completed the move or a timeout occurred.
-
-        #### Arguments:
-            None
-
-        #### Returns:
-            The current turn_to_heading, turn_to_rotation or turn_for status
         '''
         return self.is_done()
 
     def is_moving(self):
         '''
         ### DEPRECATED: Use id_done() 
-
-        ### Returns the current status of the drive_for command
-        This function is used when False has been passed as the wait parameter to drive_for\\
-        It will return True if the drivetrain is still moving or False if it has completed the move or a timeout occurred.
-
-        #### Arguments:
-            None
-
-        #### Returns:
-            The current drive_for status
         '''
         return self.is_done()
 
     def is_done(self):
         '''
         ### Returns the current status of the drive_for or turn_for command
+
         This function is used when False has been passed as the wait parameter to drive_for or turn_for\\
         It will return False if the drivetrain is still moving or True if it has completed the move or a timeout occurred.
 
-        #### Arguments:
-            None
-
-        #### Returns:
-            The current drive_for or turn_for status
+        :returns: The current drive_for or turn_for status
         '''
         return self.dp.is_done()
 
