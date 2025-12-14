@@ -106,7 +106,6 @@ class SmartDriveWrapper(SmartDrive):
         :param (optional) Ki: The new turn I constant, default is 0.0
         :param (optional) Kd: The new turn D constant, default is 0.0
         '''
-
         self.dp.set_turn_constants(Kp=Kp, Ki=Ki, Kd=Kd)
 
         super().set_turn_constant(Kp)
@@ -404,15 +403,12 @@ class SmartDriveWrapper(SmartDrive):
     def set_drive_velocity(self, velocity, units:VelocityPercentUnits=VelocityUnits.PERCENT):
         '''
         ### Set default velocity for drive commands
+
         This will be the velocity used for subsequent calls to drive if a velocity is not provided
         to that function.
 
-        #### Arguments:
-            velocity : The new velocity
-            units : Only PERCENT is supported
-
-        #### Returns:
-            None
+        :param velocity: The new velocity
+        :param (optional) units: Only PERCENT is supported
         '''
         if units != PercentUnits.PERCENT:
             raise ValueError("SmartDriveWrapper.set_drive_velocity(): PERCENT supported for units")
@@ -427,12 +423,8 @@ class SmartDriveWrapper(SmartDrive):
 
         This will be the accelertaion used for subsequent calls to drive
 
-        #### Arguments:
-            accel : The new acceleration in PERCENT per timestep
-            units : Only PERCENT is supported
-
-        #### Returns:
-            None
+        :param accel: The new acceleration in PERCENT per timestep
+        :param (optional) units: Only PERCENT is supported
         '''
         if units is not PercentUnits.PERCENT and units is not VelocityUnits.PERCENT:
             raise ValueError("SmartDriveWrapper.set_drive_velocity(): PERCENT supported for units")
@@ -442,15 +434,12 @@ class SmartDriveWrapper(SmartDrive):
     def set_turn_velocity(self, velocity, units:VelocityPercentUnits=VelocityUnits.PERCENT):
         '''
         ### Set default velocity for turn commands
+
         This will be the velocity used for subsequent calls to turn if a velocity is not provided
         to that function.
 
-        #### Arguments:
-            velocity : The new velocity
-            units : The units for the supplied velocity, (PERCENT only))
-
-        #### Returns:
-            None
+        :param velocity: The new velocity
+        :param (optional) units: The units for the supplied velocity, (PERCENT only))
         '''
         if units != PercentUnits.PERCENT:
             raise ValueError("SmartDriveWrapper.set_turn_velocity(): PERCENT supported for units")
@@ -462,13 +451,10 @@ class SmartDriveWrapper(SmartDrive):
     def set_stopping(self, mode=BrakeType.COAST):
         '''
         ### Set the stopping mode for all motors on the drivetrain
+
         Setting the action for the motors when stopped.
 
-        #### Arguments:
-            mode : The stopping mode, COAST, BRAKE or HOLD
-
-        #### Returns:
-            None
+        :param (optional) mode: The stopping mode, COAST (default), BRAKE or HOLD
         '''
         self.dp.set_stopping(mode)
         super().set_stopping(mode)
@@ -476,15 +462,12 @@ class SmartDriveWrapper(SmartDrive):
     def set_timeout(self, timeout, units=TimeUnits.MSEC):
         '''
         ### Set the timeout value used all motors on the drivetrain
+        
         The timeout value is used when performing drive_for and turn_for commands.  If timeout is
-         reached and the motor has not completed moving, then the function will return False.
+        reached and the motor has not completed moving, then the function will return False.
 
-        #### Arguments:
-            timeout : The new timeout
-            units : The units for the provided timeout, the default is MSEC
-
-        #### Returns:
-            None
+        timeout : The new timeout
+        units : The units for the provided timeout, the default is MSEC
         '''
         super().set_timeout(timeout, units)
         if units == TimeUnits.MSEC: timeout = timeout / 1000.0
@@ -494,27 +477,30 @@ class SmartDriveWrapper(SmartDrive):
         '''
         ### Get the current timeout value used by the drivetrain
 
-        #### Arguments:
-            None
-
-        #### Returns:
-            Timeout value in mS
+        :returns: Timeout value in mS
         '''
         return self.dp.get_timeout()
 
     def on_timeout(self, fn):
+        '''
+        ### INTERNAL
+        
+        :param self: Description
+        :param fn: Description
+        '''
         self.dp.set_timeout_callback(fn)
 
     def stop(self, mode=None):
         '''
-        ### Stop the drivetrain, set to 0 velocity and set current stopping_mode
-        The motors will be stopped and set to COAST, BRAKE or HOLD
+        ### Stop the drivetrain
+        
+        This will override any running drive or turn commands (as long as they are interruptable, wait=True)
 
-        #### Arguments:
-            None
+        Velocity is set to 0 and the specified mode (if present) is used to stop the motors.
+        
+        If mode is not specified, then the default action that was set using set_stopping() will be used.
 
-        #### Returns:
-            None
+        :param (optional) mode: The stopping mode, COAST, BRAKE or HOLD
         '''
         self.dp.stop(mode)
 

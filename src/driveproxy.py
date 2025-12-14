@@ -1,6 +1,7 @@
 from vex import *
 from inertialwrapper import InertialWrapper
 from pid import PID
+from math import radians, cos
 
 # Default Values
 DRIVETRAIN_MOTOR_SPEED_RPM = 200.0
@@ -307,10 +308,13 @@ class DriveProxy:
             pid_output = drive_pid.compute(target_position, current_position)
 
             turn_pid_output = 0.0
+            drive_turn_scaling = 1.0
             if (heading is not None):
                 current_rotation = self.inertial.rotation()
                 turn_pid_output = turn_pid.compute(target_rotation, current_rotation)
+                drive_turn_scaling = cos(radians(target_rotation - current_rotation))
 
+            pid_output *= drive_turn_scaling # reduce drive power when heading error is large
             self._spin(pid_output + turn_pid_output, pid_output - turn_pid_output)
 
             wait(drive_pid.timestep, SECONDS)
