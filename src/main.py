@@ -88,6 +88,7 @@ def pre_autonomous():
     wait(0.1, SECONDS)
 
     brain.screen.clear_screen()
+    brain.screen.set_cursor(1,1)
     brain.screen.print("pre auton")
     brain.screen.new_line()
     print("pre_auton")
@@ -112,9 +113,12 @@ def pre_autonomous():
 
     initialize_tracker()
 
+    brain.screen.print("pre auton -- done")
+    brain.screen.new_line()
     print("pre_auton done")
 
     ROBOT_INITIALIZED = True
+
 
 def print_tracker(tracker: Tracking, x = 0.0, y = 0.0, reverse = False):
     orientation = tracker.get_orientation()

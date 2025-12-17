@@ -312,7 +312,11 @@ class DriveProxy:
             if (heading is not None):
                 current_rotation = self.inertial.rotation()
                 turn_pid_output = turn_pid.compute(target_rotation, current_rotation)
-                drive_turn_scaling = cos(radians(target_rotation - current_rotation))
+                
+                if abs(pid_output) + abs(turn_pid_output) > 1.0:
+                    drive_turn_scaling = (1.0 - abs(turn_pid_output)) / abs(pid_output)
+                else:
+                    drive_turn_scaling = cos(radians(target_rotation - current_rotation))
 
             pid_output *= drive_turn_scaling # reduce drive power when heading error is large
             self._spin(pid_output + turn_pid_output, pid_output - turn_pid_output)
