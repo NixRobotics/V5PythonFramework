@@ -342,7 +342,7 @@ class SmartDriveWrapper(SmartDrive):
         :rtype: Any | Literal[True]
         '''
         if velocity is not None: raise NotImplementedError("SmartDriveWrapper.drive_for(): velocity parameter not supported, use set_drive_velocity() instead")
-        self.dp.drive_for(direction, distance, units, heading=None, settle_error=None, timeout=None, wait=wait)
+        return self.dp.drive_for(direction, distance, units, heading=None, settle_error=None, timeout=None, wait=wait)
         #return super().drive_for(direction, distance, units, velocity, units_v, wait)
 
     def drive_straight_for(self, direction, distance, units = DistanceUnits.MM,
@@ -369,7 +369,31 @@ class SmartDriveWrapper(SmartDrive):
             raise ValueError("SmartDriveWrapper.drive_straight_for(): Only PERCENT supported for units_v")
         if heading is not None and units_h != RotationUnits.DEG:
             raise ValueError("SmartDriveWrapper.drive_straight_for(): Only DEGREES supported for units_h")
-        self.dp.drive_for(direction, distance, units, heading=heading, settle_error=None, timeout=None, wait=wait)
+        return self.dp.drive_for(direction, distance, units, heading=heading, settle_error=None, timeout=None, wait=wait)
+
+    def drive_to_point(self, x: float, y: float, direction, orientation_callback: Callable, wait = True):
+        '''
+        ### Drive robot to the x/y point in MM specified
+
+        A callback function must be provided that will return the current x,y and heading of the robot when called.\\
+        This function can drive forward or backward to the target point as specified by the direction parameter.\\
+        The function will return when the robot crosses a line perpendicular to the path to the target point or when the distance
+        error is within the settle error specified by set_drive_threshold(). Typically the line crossing will occur first so that
+        the robot position may not be quite as accurate as performing a turn followed by a drive. However this method is generally
+        much faster when chaining multiple drive_to_point commands together where intermeddiate accuracy is not so important.
+        
+        :param x: X (NORTH) coordinate of target point in MM
+        :type x: float
+        :param y: Y (EAST) coordinate of target point in MM
+        :type y: float
+        :param direction: FOWARD or REVERSE
+        :param orientation_callback: Callback function that returns current x,y,heading (in DEGREES) of the robot
+        :type orientation_callback: Callable
+        :param wait: When True (default) the function will wait for the command to complete before returning
+        :return: Time for command to complete in MS (if wait=True)
+        :rtype: Any | Literal[False]
+        '''
+        return self.dp.drive_to_point(x, y, direction, orientation_callback, settle_error = None, timeout = None, wait = wait)
 
     def drive(self, direction, velocity=None, units:VelocityPercentUnits=VelocityUnits.RPM):
         '''

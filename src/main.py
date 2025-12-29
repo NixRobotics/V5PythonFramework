@@ -10,7 +10,7 @@
 # Library imports
 from vex import *
 import gc
-from math import pi, degrees, radians
+from math import pi, degrees, radians, sin, cos, atan2
 from v5pythonlibrary import *
 
 brain=Brain()
@@ -144,11 +144,28 @@ def auton1_drive_straight(drive_train: DriveProxy, tracker: Tracking):
     
     drive_train.turn_to_heading(0.0, timeout=2.0)
 
-# DEMO1: Once robot has been tuned for individual commands this will turn the robot and drive forward and backwards
+def OnOrientationUpdate():
+    if tracker is None:
+        raise RuntimeError("Tracker not initialized")
+    current_orientation = tracker.get_orientation()
+    return current_orientation.x, current_orientation.y, current_orientation.heading
+
 # DEMO1: Once robot has been tuned for individual commands this will turn the robot and drive forward and backwards
 def auton2_drive_to_points(drive_train: DriveProxy, tracker: Tracking):
     print_tracker(tracker)
 
+    drive_train.set_drive_velocity(50, PERCENT)
+    drive_train.set_turn_velocity(50, PERCENT)
+    drive_train.set_heading_lock_constants(Kp=1.0, Ki=0.0, Kd=0.0) # degrees
+    for i in range(4):
+        drive_train.drive_to_point(24.0 * 25.4, 0.0, FORWARD, OnOrientationUpdate, wait=True)
+        drive_train.drive_to_point(24.0 * 25.4, 24.0 * 25.4, FORWARD, OnOrientationUpdate, wait=True)
+        drive_train.drive_to_point(0.0, 24.0 * 25.4, FORWARD, OnOrientationUpdate, wait=True)
+        drive_train.drive_to_point(0.0, 0.0, FORWARD, OnOrientationUpdate, wait=True)
+
+    print_tracker(tracker)
+
+    '''
     print("Start Turn")
     drive_train.turn_to_heading(90.0, timeout=2.0)
     print_tracker(tracker)
@@ -175,6 +192,7 @@ def auton2_drive_to_points(drive_train: DriveProxy, tracker: Tracking):
     print("Start Turn")
     drive_train.turn_to_heading(0.0)
     print_tracker(tracker)
+    '''
 
 def auton3_drive_to_points_long(drive_train: DriveProxy, tracker:Tracking):
     print("auton3_drive_to_points_long")
@@ -405,8 +423,8 @@ def autonomous():
 
     # calibration_tracking_wheels()
     # auton1_drive_straight(drive_train, tracker)
-    # auton2_drive_to_points(drive_train, tracker)
-    auton3_drive_to_points_long(drive_train, tracker)
+    auton2_drive_to_points(drive_train, tracker)
+    # auton3_drive_to_points_long(drive_train, tracker)
     # auton4_circle_drive(drive_train, tracker)
     # auton5_circle_follow(drive_train, tracker)
     # test_concurrent(drive_train, tracker)

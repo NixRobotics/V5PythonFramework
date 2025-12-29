@@ -1,7 +1,7 @@
 from vex import *
 from inertialwrapper import InertialWrapper
 from pid import PID
-from math import radians, cos
+from math import degrees, radians, sin, cos, atan2
 
 # Default Values
 DRIVETRAIN_MOTOR_SPEED_RPM = 200.0
@@ -208,6 +208,19 @@ class DriveProxy:
         reference_linear_speed = 1.067 # m/s - speed of 200RPM drive using 4" wheels and 1:1 gear ratio
         reference_rotation_speed = 360.0 # deg/s
         return reference_rotation_speed * self.linear_speed() / reference_linear_speed
+    
+    def test_finish_line(self, target_x, target_y, target_angle, current_x, current_y):
+        '''
+        test_finish_line checks if the robot has crossed the line perpendicular to the path to the target point
+        Provides a way to stop robot hunting for the target point when it gets close, avoiding large swings in angle
+        
+        :param target_x: Description
+        :param target_y: Description
+        :param target_angle: Description
+        :param current_x: Description
+        :param current_y: Description
+        '''
+        return( (target_y-current_y) * sin(radians(target_angle)) <= -(target_x-current_x) * cos(radians(target_angle)) )
 
     def turn_to_heading(self, heading, settle_error = None, timeout = None, wait = True):
         angle = self.inertial.calc_angle_to_heading(heading)
@@ -350,8 +363,119 @@ class DriveProxy:
             self._worker_thread = Thread(self._drive_for_thread, (direction, distance, unit, heading, settle_error, timeout))
             return 0
 
-    def drive_to_point(self, x, y, tracker):
-        pass
+    def _drive_to_point(self, x, y, direction, orientation_callback, settle_error, timeout):
+        '''
+        ### INTERNAL
+        '''
+        self._command_running = True
+        timer = Timer()
+
+        drive_pid = PID(self.drive_pid_constants.Kp, self.drive_pid_constants.Ki, self.drive_pid_constants.Kd)
+        drive_pid.set_output_limit(self.drive_pid_constants.max_output) # limit output to 50% power
+        drive_pid.set_output_ramp_limit(self.drive_pid_constants.max_ramp)
+        # see if we want to override settle and timeout
+        if settle_error is None: drive_settle_error = self.drive_pid_constants.settle_error
+        else: drive_settle_error = self.calc_drive_settle_error(settle_error)
+        drive_pid.set_settle_threshold(drive_settle_error)
+        self._this_timeout = self.default_timeout if timeout is None else timeout
+        drive_pid.set_timeout(self._this_timeout)
+
+        turn_pid = PID(self.heading_lock_pid_constants.Kp, self.heading_lock_pid_constants.Ki, self.heading_lock_pid_constants.Kd)
+        turn_pid.set_output_limit(self.heading_lock_pid_constants.max_output) # limit output to 50% power
+        turn_pid.set_settle_time(0.0)
+        turn_pid.set_timeout(0.0)
+
+        cur_x, cur_y, cur_heading = orientation_callback()
+        start_angle = degrees(atan2(y - cur_y, x - cur_x))
+        start_angle = start_angle if direction == DirectionType.FORWARD else InertialWrapper.to_angle(start_angle + 180.0)
+        print("Start Drive to Point: ({:.1f}, {:.1f}), Direction: {}, Start Angle: {:.2f}".format(x, y, direction, start_angle))
+
+        line_settled = False
+        prev_line_settled = self.test_finish_line(x, y, start_angle, cur_x, cur_y)
+
+        while not drive_pid.is_done() and not self._cancel_command:
+            cur_x, cur_y, cur_heading = orientation_callback()
+            
+            line_settled = self.test_finish_line(x, y, start_angle, cur_x, cur_y)
+            if (line_settled and not prev_line_settled):
+                print("Finished line to point at position: ({:.1f}, {:.1f})".format(cur_x, cur_y))
+                break
+            prev_line_settled = line_settled
+
+            distance_error = ((x - cur_x) ** 2 + (y - cur_y) ** 2) ** 0.5
+            distance_error_revs = 360.0 * distance_error / (self.wheel_travel_mm * self.ext_gear_ratio) # convert mm to wheel revolutions
+            distance_error_revs = distance_error_revs if direction == DirectionType.FORWARD else -distance_error_revs
+
+            target_heading = InertialWrapper.to_heading(degrees(atan2(y - cur_y, x - cur_x)))
+            target_heading = target_heading if direction == DirectionType.FORWARD else InertialWrapper.to_heading(target_heading + 180.0)
+            target_rotation = self.inertial.calc_rotation_at_heading(target_heading)
+            current_rotation = self.inertial.rotation()
+
+            # print("Drive to Point: Pos ({:.1f}, {:.1f}), Dist Err: {:.1f} mm, Heading Err: {:.2f} deg".format(
+            #     cur_x, cur_y, distance_error, target_rotation - current_rotation))
+
+            pid_output = drive_pid.compute(0.0, -distance_error_revs)
+
+            turn_pid_output = 0.0
+            drive_turn_scaling = 1.0
+            if (distance_error_revs > drive_settle_error):
+                turn_pid_output = turn_pid.compute(target_rotation, current_rotation)
+            
+            drive_turn_scaling = cos(radians(target_rotation - current_rotation))
+            if drive_turn_scaling < 0.0: drive_turn_scaling = 0.0
+
+            if abs(pid_output * drive_turn_scaling) + abs(turn_pid_output) > 1.0:
+                drive_turn_scaling = (1.0 - abs(turn_pid_output)) / abs(pid_output * drive_turn_scaling)
+
+            pid_output *= drive_turn_scaling # reduce drive power when heading error is large
+            self._spin(pid_output + turn_pid_output, pid_output - turn_pid_output)
+
+            wait(drive_pid.timestep, SECONDS)
+
+        self._was_timeout = drive_pid.get_is_timed_out()
+        self._stop(self.stop_mode)
+        print("Done Drive: ", drive_pid.get_is_settled(), drive_pid.get_is_timed_out())
+
+        # for log_entry in drive_pid.log:
+        #     print(log_entry[0], ",", log_entry[1], ",", log_entry[2])
+        #     wait(50, MSEC)
+        self._this_timeout = None
+        self._command_running = False
+        if (self._was_timeout): self._timeout_notifier.broadcast()
+        return timer.time()
+        
+    def _drive_to_point_thread(self, x, y, direction, orientation_callback, settle_error, timeout):
+        '''
+        ### INTERNAL
+        '''
+        self._drive_to_point(x, y, direction, orientation_callback, settle_error, timeout)
+
+    def drive_to_point(self, x: float, y: float, direction, orientation_callback: Callable, settle_error: float | None = None, timeout: float | None = None, wait: bool = True):
+        '''
+        Docstring for drive_to_point
+        
+        :param x: Description
+        :type x: float
+        :param y: Description
+        :type y: float
+        :param direction: Description
+        :param orientation_callback: Description
+        :type orientation_callback: Callable
+        :param settle_error: Description
+        :type settle_error: float | None
+        :param timeout: Description
+        :type timeout: float | None
+        :param wait: Description
+        :type wait: bool
+        '''
+        self._concurrency_check()
+        self._command_running = True
+        if wait:
+            return self._drive_to_point(x, y, direction, orientation_callback, settle_error, timeout)
+        else:
+            self._worker_thread = Thread(self._drive_to_point_thread, (x, y, direction, orientation_callback, settle_error, timeout))
+            return 0
+
 
     def _spin(self, left_speed, right_speed):
         '''
