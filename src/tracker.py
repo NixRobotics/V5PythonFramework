@@ -49,12 +49,6 @@ class Tracking:
             self.side_wheel_size = side_wheel_size
             self.side_gear_ratio = side_gear_ratio
             self.side_offset = side_offset
-
-    #Configuration = namedtuple('Configuration', [
-    #        'fwd_is_odom',
-    #        'fwd_wheel_size', 'fwd_gear_ratio', "fwd_offset",
-    #        'side_wheel_size', 'side_gear_ratio', 'side_offset'
-    #   ])
     
     # Encoder initializers
     # @param left is initial left encoder position in revolutions (either left motors or left odom wheek)
@@ -77,10 +71,11 @@ class Tracking:
                  devices,
                  orientation: Union[Orientation, None] = None,
                  configuration: Union[Configuration, None] = None,
-                 initial_values: Union[EncoderValues, None] = None,
-                 initial_timestamps: Union[EncoderValues, None] = None):
+                 name: str = "Tracker"
+                 ):
 
-        print('init')
+        self._name = name
+        print('init', self._name)
 
         self._is_enabled = False
         self._enable_resampling = True
@@ -115,27 +110,34 @@ class Tracking:
 
         self.timer = Timer()
         self.avg_time = 0
-        self.timestep = 0.010 # seconds
+        self.avg_rate = 0
+        self.timestep = 5 # ms
 
-        # Capture initial values of encoders and store as the previous values
-        self.previous_left_position = 0.0 if initial_values is None else initial_values.left # revolutions
-        self.previous_right_position = 0.0 if initial_values is None else initial_values.right # revolutions
-        self.previous_side_position =  0.0 if initial_values is None else initial_values.side # revolutions
+        # Pervious values for odometry calculations
+        self.previous_left_position = 0.0 # revolutions
+        self.previous_right_position = 0.0 # revolutions
+        self.previous_side_position =  0.0 # revolutions
         self.previous_theta = self.theta # radians
 
         # Keep track of raw encoder values for resampling
         self.latest_encoders = self.previous_encoders = [0.0, 0.0, 0.0, 0.0]
         self.latest_timestamps = self.previous_timestamps = [0, 0, 0, 0]
-        if initial_values is not None:
-            self._init_rolling_buffers(initial_values, initial_timestamps)
 
         self.this_thread = self.start_tracker(devices)
+
+    @property
+    def name(self):
+        '''
+        ### Docstring for name
+        
+        :returns: Name of tracker
+        '''
+        return self._name
 
     def _set_initial_values(self, initial_values: EncoderValues, initial_timestamps: EncoderValues):
         '''
         ### INTERNAL: Docstring for set_initial_values
         
-        :param self: Description
         :param initial_values: Description
         :type initial_values: EncoderValues
         :param initial_timestamps: Description
@@ -224,6 +226,76 @@ class Tracking:
         heading_deg = degrees(self.theta)
         return InertialWrapper.to_heading(heading_deg)
 
+        # 0 is older, 1 is newer
+    def _linear_interp(self, s0, s1, t0, t1, t_ref):
+        '''
+        ### INTERNAL Docstring for linear_interp
+        
+        :param self: Description
+        :param s0: Description
+        :param s1: Description
+        :param t0: Description
+        :param t1: Description
+        :param t_ref: Description
+        '''
+        if t1 == t0: return s1
+        if t0 == t_ref: return s0
+        if t1 == t_ref: return s1
+        s_new = s0 + (t_ref - t0) * ((s1 - s0) / (t1 - t0))
+        return s_new
+        
+    def _rolling_buffer(self, values, timestamps, index):
+        '''
+        ### INTERNAL Docstring for rolling_buffer
+        
+        :param values: Description
+        :param timestamps: Description
+        :param index: Description
+        :returns: True if updated, False if not
+        '''
+        if self.previous_encoders is None or self.latest_encoders is None:
+            raise RuntimeError("Previous Encoder Values Not Set")
+        
+        if timestamps[index] > self.latest_timestamps[index]:
+            self.previous_timestamps[index] = self.latest_timestamps[index]
+            self.latest_timestamps[index] = timestamps[index]
+            self.previous_encoders[index] = self.latest_encoders[index]
+            self.latest_encoders[index] = values[index]
+            return True
+        
+        return False
+
+    def _resample(self, values, timestamps):
+        '''
+        ### INTERNAL Docstring for resample
+        
+        :param values: Description
+        :param timestamps: Description
+        '''
+        # We attempt to align everything to the gyro, if that does not get updated we'll just use the latest values
+        # gyro skips very infrequently so any anomolies from this should be minimal
+
+        # Update rolling buffers
+        updated = [False] * len(values)
+        for i in range(len(values)):
+            updated[i] = self._rolling_buffer(values, timestamps, i)
+
+        return_values = [0.0] * len(values)
+        reference_time_index = len(values) - 1
+        reference_time_stamp = self.latest_timestamps[reference_time_index]
+        for i in range(len(values) - 1):
+            #if updated[i]: reference_time_stamp = self.latest_timestamps[i]
+            #else: reference_time_stamp = self.latest_timestamps[i] + 0.01
+            return_values[i] = self._linear_interp(
+                self.previous_encoders[i],
+                self.latest_encoders[i],
+                self.previous_timestamps[i],
+                self.latest_timestamps[i],
+                reference_time_stamp)
+        return_values[reference_time_index] = values[reference_time_index]
+
+        return return_values
+
     def _calc_timestep_arc_chord(self, x, y, theta, delta_forward, delta_side, delta_theta):
         '''
         ### INTERNAL
@@ -257,70 +329,6 @@ class Tracking:
         delta_global_y = delta_local_x * sin(to_global_rotation_angle) + delta_local_y * cos(to_global_rotation_angle)
 
         return (x + delta_global_x, y + delta_global_y, theta + delta_theta)
-    
-    # 0 is older, 1 is newer
-    def _linear_interp(self, s0, s1, t0, t1, t_ref):
-        '''
-        ### INTERNAL Docstring for linear_interp
-        
-        :param self: Description
-        :param s0: Description
-        :param s1: Description
-        :param t0: Description
-        :param t1: Description
-        :param t_ref: Description
-        '''
-        if t1 == t0: return s1
-        if t0 == t_ref: return s0
-        if t1 == t_ref: return s1
-        s_new = s0 + (t_ref - t0) * ((s1 - s0) / (t1 - t0))
-        return s_new
-        
-    def _rolling_buffer(self, values, timestamps, index):
-        '''
-        ### INTERNAL Docstring for rolling_buffer
-        
-        :param self: Description
-        :param values: Description
-        :param timestamps: Description
-        :param index: Description
-        '''
-        if self.previous_encoders is None or self.latest_encoders is None:
-            raise RuntimeError("Previous Encoder Values Not Set")
-        
-        if timestamps[index] > self.latest_timestamps[index]:
-            self.previous_timestamps[index] = self.latest_timestamps[index]
-            self.latest_timestamps[index] = timestamps[index]
-            self.previous_encoders[index] = self.latest_encoders[index]
-            self.latest_encoders[index] = values[index]
-
-    def _resample(self, values, timestamps):
-        '''
-        ### INTERNAL Docstring for resample
-        
-        :param self: Description
-        :param values: Description
-        :param timestamps: Description
-        '''
-        # We attempt to align everything to the gyro, if that does not get updated we'll just use the latest values
-        # gyro skips very infrequently so any anomolies from this should be minimal
-
-        # Update rolling buffers
-        for i in range(len(values)):
-            self._rolling_buffer(values, timestamps, i)
-
-        return_values = [0.0] * len(values)
-        reference_time_index = len(values) - 1
-        for i in range(len(values) - 1):
-            return_values[i] = self._linear_interp(
-                self.previous_encoders[i],
-                self.latest_encoders[i],
-                self.previous_timestamps[i],
-                self.latest_timestamps[i],
-                self.latest_timestamps[reference_time_index])
-        return_values[reference_time_index] = values[reference_time_index]
-
-        return return_values
 
     def _update_location(self, values, timestamps):
         '''
@@ -365,6 +373,75 @@ class Tracking:
         self.previous_side_position = side_position
         self.previous_theta = theta
     
+    def _calc_timestep_arc_chord_fwd_only(self, x, y, theta, delta_forward, delta_side, delta_theta):
+        '''
+        ### INTERNAL
+
+        x, y, delta_forward, delta_side in MM
+
+        theta, delta_theta in radians
+        '''
+
+        # local deltas
+        if (delta_theta == 0.0):
+            # no turn - use simple deltas
+            delta_local_x = delta_forward
+            to_global_rotation_angle = theta
+        else:
+            # robot turning
+            # calculate radius of movement for forward and side wheels
+            r_linear = -self.fwd_offset + (delta_forward / delta_theta) # mm
+
+            # calculate chord distances using chord length = 2 * r * sin(theta / 2)
+            # pre-rotate by half the turn angle so we have only distance along one axis for each
+            # when we rotate to global frame we need to account for this half-angle rotation
+            to_global_rotation_angle = theta + delta_theta / 2
+            delta_local_x = r_linear * 2.0 * sin(delta_theta / 2.0)
+
+        # rotate to global
+        delta_global_x = delta_local_x * cos(to_global_rotation_angle)
+        delta_global_y = delta_local_x * sin(to_global_rotation_angle)
+
+        return (x + delta_global_x, y + delta_global_y, theta + delta_theta)
+
+    def _update_location_fwd_only(self, values, timestamps):
+        '''
+        ### INTERNAL
+
+        ### Arguments
+            values: array of 4 values: left(REV), right(REV), side(REV), theta(RADIANS)
+            timestamps: array of 4 timestamps: left(MS), right(MS), side(MS), theta(MS)
+        '''
+        if self._enable_resampling:
+            resampled = self._resample(values, timestamps)
+        else:
+            resampled = values
+
+        # Unpack inputs
+        left_position = resampled[0]
+        right_position = resampled[1]
+        theta = resampled[3]
+
+        # position here is the rotoation of th wheel so needs to be multiplied by any gear ratio if present
+        left_position *= self.fwd_gear_ratio
+        right_position *= self.fwd_gear_ratio
+
+        delta_left = left_position - self.previous_left_position
+        delta_right = right_position - self.previous_right_position
+        delta_theta = theta - self.previous_theta
+
+        # delta_forward and delta_strafe will be the piecewise motion of this robot in this timestop, for forward and sideways/strafe in mm
+        if self.fwd_is_odom:
+            delta_forward = self.fwd_wheel_size * delta_left
+        else:
+            delta_forward = self.fwd_wheel_size * (delta_left + delta_right) / 2.0
+
+        self.x, self.y, self.theta = self._calc_timestep_arc_chord_fwd_only(self.x, self.y, self.theta, delta_forward, 0.0, delta_theta)
+
+        self.previous_left_position = left_position
+        self.previous_right_position = right_position
+        self.previous_theta = theta
+
     def get_orientation(self):
         '''
         ### Docstring for get_orientation
@@ -383,9 +460,10 @@ class Tracking:
         '''
         self.x = orientation.x
         self.y = orientation.y
-        self.theta = radians(InertialWrapper.to_angle(orientation.heading))
-        self.previous_theta = self.theta
-        self._set_sensor_heading(orientation.heading)
+        if (orientation.heading is not None):
+            self.theta = radians(InertialWrapper.to_angle(orientation.heading))
+            self.previous_theta = self.theta
+            self._set_sensor_heading(orientation.heading)
         self._init_rolling_buffers(
             Tracking.EncoderValues(0.0, 0.0, 0.0, Tracking.gyro_theta(self.inertial)),
             Tracking.EncoderValues(0, 0, 0, self.inertial.timestamp()), 3)
@@ -520,27 +598,49 @@ class Tracking:
         :type inertial: InertialWrapper
         '''
         print("Tracker Using Motor Encoders")
-        initial_encoders = Tracking.EncoderValues(left_drive.position(RotationUnits.REV), right_drive.position(RotationUnits.REV), 0.0, Tracking.gyro_theta(inertial))
-        initial_timestamps = Tracking.EncoderValues(self._avg_motor_times(left_drive), self._avg_motor_times(right_drive), 0, inertial.timestamp())
-        self._set_initial_values(initial_encoders, initial_timestamps)
-        time_sum = 0
-        time_count = 0
+
+        first_run = True
+        run_time_sum = 0
+        run_time_count = 0
+        loop_time_sum = 0
+        loop_count = 0
+
         while(True):
-            start_time = self.timer.system_high_res()
+            run_time_start = self.timer.system_high_res()
 
             if (self._is_enabled):
-                #encoders = Tracking.EncoderValues(left_drive.position(RotationUnits.REV), right_drive.position(RotationUnits.REV), 0.0, Tracking.gyro_theta(inertial))
-                #timestamps = Tracking.EncoderValues(self.avg_motor_times(left_drive), self.avg_motor_times(right_drive), 0, inertial.timestamp())
-                self._update_location(
-                    [left_drive.position(RotationUnits.REV), right_drive.position(RotationUnits.REV), 0.0, Tracking.gyro_theta(inertial)],
-                    [self._avg_motor_times(left_drive), self._avg_motor_times(right_drive), 0, inertial.timestamp()])
+                values = [left_drive.position(RotationUnits.REV), right_drive.position(RotationUnits.REV), 0.0, Tracking.gyro_theta(inertial)]
+                timestamps = [self._avg_motor_times(left_drive), self._avg_motor_times(right_drive), 0, inertial.timestamp()]
+                if first_run:
+                    last_timestamps = [0, 0, 0, 0]
+                    self._set_initial_values(Tracking.EncoderValues(values[0], values[1], values[2], values[3]),
+                                             Tracking.EncoderValues(timestamps[0], timestamps[1], timestamps[2], timestamps[3]))
 
-            end_time = self.timer.system_high_res()
-            time_sum += end_time - start_time
-            time_count += 1
-            self.avg_time = time_sum / time_count
+                updated = False
+                for i in range(4):
+                    if timestamps[i] != last_timestamps[i]: updated = True
+                last_timestamps = timestamps
 
-            wait(self.timestep, SECONDS)
+                if updated and not first_run:
+                    self._update_location_fwd_only(values, timestamps)
+
+                    run_time_end = self.timer.system_high_res()
+                    run_time_sum += run_time_end - run_time_start
+                    run_time_count += 1
+                    self.avg_time = run_time_sum / run_time_count
+                
+                if updated:
+                    if not first_run:
+                        loop_time_sum += (run_time_start - last_run_time_start) / 1000.0
+                        self.avg_rate = loop_time_sum / loop_count
+                    last_run_time_start = run_time_start
+                    loop_count += 1
+
+                first_run = False
+            else:
+                first_run = True
+
+            wait(self.timestep, MSEC)
 
     def _track_odometry(self, rotation_fwd: Rotation, rotation_side: Rotation, inertial: InertialWrapper):
         '''
@@ -555,27 +655,52 @@ class Tracking:
         :type inertial: InertialWrapper
         '''
         print("Tracker Using Rotation Sensors")
-        initial_encoders = Tracking.EncoderValues(rotation_fwd.position(RotationUnits.REV), 0.0, rotation_side.position(RotationUnits.REV), Tracking.gyro_theta(inertial))
-        initial_timestamps = Tracking.EncoderValues(rotation_fwd.timestamp(), 0, rotation_side.timestamp(), inertial.timestamp())
-        self._set_initial_values(initial_encoders, initial_timestamps)
-        time_sum = 0
-        time_count = 0
+
+        first_run = True
+        run_time_sum = 0
+        run_time_count = 0
+        loop_time_sum = 0
+        loop_count = 0
+
         while(True):
-            start_time = self.timer.system_high_res()
+            run_time_start = self.timer.system_high_res()
 
             if (self._is_enabled):
-                #encoders = Tracking.EncoderValues(rotation_fwd.position(RotationUnits.REV), 0.0, rotation_side.position(RotationUnits.REV), Tracking.gyro_theta(inertial))
-                #timestamps = Tracking.EncoderValues(rotation_fwd.timestamp(), 0, rotation_side.timestamp(), inertial.timestamp())
-                self._update_location(
-                    [rotation_fwd.position(RotationUnits.REV), 0.0, rotation_side.position(RotationUnits.REV), Tracking.gyro_theta(inertial)],
-                    [rotation_fwd.timestamp(), 0, rotation_side.timestamp(), inertial.timestamp()])
+                values = [rotation_fwd.position(RotationUnits.REV), 0.0, rotation_side.position(RotationUnits.REV), Tracking.gyro_theta(inertial)]
+                timestamps = [rotation_fwd.timestamp(), 0, rotation_side.timestamp(), inertial.timestamp()]
+                if first_run:
+                    last_timestamps = [0, 0, 0, 0]
+                    self._set_initial_values(Tracking.EncoderValues(values[0], values[1], values[2], values[3]),
+                                             Tracking.EncoderValues(timestamps[0], timestamps[1], timestamps[2], timestamps[3]))
 
-            end_time = self.timer.system_high_res()
-            time_sum += end_time - start_time
-            time_count += 1
-            self.avg_time = time_sum / time_count
+                updated = False
+                for i in range(4):
+                    if timestamps[i] != last_timestamps[i]: updated = True
+                last_timestamps = timestamps
 
-            wait(self.timestep, SECONDS)
+                if updated and not first_run:
+                    if self.side_wheel_size == 0.0:
+                        self._update_location_fwd_only(values, timestamps)
+                    else:
+                        self._update_location(values, timestamps)
+
+                    run_time_end = self.timer.system_high_res()
+                    run_time_sum += run_time_end - run_time_start
+                    run_time_count += 1
+                    self.avg_time = run_time_sum / run_time_count
+
+                if updated:
+                    if not first_run:
+                        loop_time_sum += (run_time_start - last_run_time_start) / 1000.0
+                        self.avg_rate = loop_time_sum / loop_count
+                    last_run_time_start = run_time_start
+                    loop_count += 1
+
+                first_run = False
+            else:
+                first_run = True
+
+            wait(self.timestep, MSEC)
 
     def _tracker_thread(self, devices, unused):
         '''

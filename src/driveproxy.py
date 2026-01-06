@@ -247,17 +247,23 @@ class DriveProxy:
         turn_pid.set_timeout(self._this_timeout)
         start_rotation = self.inertial.rotation()
         target_rotation = start_rotation + (angle if direction == TurnType.RIGHT else -angle)
+        loop_count = 0
         while not turn_pid.is_done() and not self._cancel_command:
+            start_time = timer.time(SECONDS)
+
             current_rotation = self.inertial.rotation()
             pid_output = turn_pid.compute(target_rotation, current_rotation)
 
             self._spin(pid_output, -pid_output)
 
-            wait(turn_pid.timestep, SECONDS)
+            loop_count += 1
+            end_time = timer.time(SECONDS)
+            wait(turn_pid.timestep - (end_time - start_time), SECONDS)
 
         self._was_timeout = turn_pid.get_is_timed_out()
         self._stop(self.stop_mode)
-        print("Done Turn: ", turn_pid.get_is_settled(), turn_pid.get_is_timed_out())
+        rate = timer.time() / loop_count if loop_count > 0 else 0.0
+        print("Done Turn: ", rate, turn_pid.get_is_settled(), turn_pid.get_is_timed_out())
 
         # for log_entry in turn_pid.log:
         #     print(log_entry[0], ",", log_entry[1], ",", log_entry[2])
@@ -313,7 +319,10 @@ class DriveProxy:
         target_distance_revs = 360.0 * distance / (self.wheel_travel_mm * self.ext_gear_ratio) # convert mm to wheel revolutions assuming 100mm diameter wheels
         target_position = target_distance_revs if direction == DirectionType.FORWARD else -target_distance_revs
 
+        loop_count = 0
         while not drive_pid.is_done() and not self._cancel_command:
+            start_time = timer.time(SECONDS)
+
             current_position = (
                 (self.left_motors.position(RotationUnits.DEG) - left_start_pos) +
                 (self.right_motors.position(RotationUnits.DEG) - right_start_pos)) / 2.0
@@ -334,11 +343,15 @@ class DriveProxy:
             pid_output *= drive_turn_scaling # reduce drive power when heading error is large
             self._spin(pid_output + turn_pid_output, pid_output - turn_pid_output)
 
-            wait(drive_pid.timestep, SECONDS)
+            end_time = timer.time(SECONDS)
+            wait_time = drive_pid.timestep - (end_time - start_time)
+            loop_count += 1
+            wait(wait_time, SECONDS)
 
         self._was_timeout = drive_pid.get_is_timed_out()
         self._stop(self.stop_mode)
-        print("Done Drive: ", drive_pid.get_is_settled(), drive_pid.get_is_timed_out())
+        rate = timer.time() / loop_count if loop_count > 0 else 0.0
+        print("Done Drive: ", rate, drive_pid.get_is_settled(), drive_pid.get_is_timed_out())
 
         # for log_entry in drive_pid.log:
         #     print(log_entry[0], ",", log_entry[1], ",", log_entry[2])
@@ -394,6 +407,8 @@ class DriveProxy:
         prev_line_settled = self.test_finish_line(x, y, start_angle, cur_x, cur_y)
 
         while not drive_pid.is_done() and not self._cancel_command:
+            start_time = timer.time(SECONDS)
+
             cur_x, cur_y, cur_heading = orientation_callback()
             
             line_settled = self.test_finish_line(x, y, start_angle, cur_x, cur_y)
@@ -430,7 +445,9 @@ class DriveProxy:
             pid_output *= drive_turn_scaling # reduce drive power when heading error is large
             self._spin(pid_output + turn_pid_output, pid_output - turn_pid_output)
 
-            wait(drive_pid.timestep, SECONDS)
+            end_time = timer.time(SECONDS)
+            wait_time = drive_pid.timestep - (end_time - start_time)
+            wait(wait_time, SECONDS)
 
         self._was_timeout = drive_pid.get_is_timed_out()
         self._stop(self.stop_mode)
