@@ -273,7 +273,7 @@ class DriverControl:
         if pivot_min_drive_speed is not None: self.pivot_min_drive_speed = pivot_min_drive_speed
         if full_turn_drive_speed is not None: self.full_turn_drive_speed = full_turn_drive_speed
 
-    def user_drivetrain(self, control_speed, control_turn):
+    def user_drivetrain(self, control_speed, slow_turn_axis=0.0, fast_turn_axis=0.0):
         '''
         ### USER DRIVETRAIN - main entry for user control. Should be called every 10ms
         
@@ -285,14 +285,23 @@ class DriverControl:
          - drivetrain_running is used as a flag so we only stop once until the controls move above the deadband again
 
         :param control_speed: is raw controller forward / backwards speed in percent
-        :param control_turn: is raw controller left / right speed in percent
+        :param control_slow_turn: is raw controller left / right speed in percent for the slow axis (this overrides fast axis)
+        :param control_fast_turn: is raw controller left / right speed in percent for the fast axis
 
         :returns: No return value
         '''
         # calculate the drivetrain motor velocities from the controller joystick axes
 
         # just in case - make sure there is no turn coming from the joystick unless we want it
-        control_turn = self.controller_deadband(control_turn, 4.0)
+        control_slow_turn = self.controller_deadband(slow_turn_axis, 4.0)
+        control_fast_turn = self.controller_deadband(fast_turn_axis, 10.0)
+        # deadband logic will keep output at zero until deadband exceeded
+        if (control_slow_turn != 0.0):
+            control_turn = control_slow_turn
+            detwitch = self.enable_detwitch
+        else:
+            control_turn = control_fast_turn
+            detwitch = False
 
         # Select auto follow heading mode if enabled and we are not commanded to turn, and are not waiting on a turn to finish
         # TODO: add case for when coasting to stop, but ramp control is still active
@@ -304,7 +313,7 @@ class DriverControl:
         # Else just follow along with what the driver is doing
         else:
             self.cancel_drive_straight()
-            detwitch_speed, detwitch_turn = self.drivetrain_detwitch(control_speed, control_turn, self.enable_detwitch)
+            detwitch_speed, detwitch_turn = self.drivetrain_detwitch(control_speed, control_turn, detwitch)
             safe_speed, safe_turn = self.drivetrain_ramp_limit(detwitch_speed, detwitch_turn, self.enable_ramp_control)
         
         # mix together speed and turn and clamp combined values to -100 to +100 percent

@@ -790,7 +790,7 @@ class DriverControl:
         '''        
         pass
 
-    def user_drivetrain(self, control_speed, control_turn):
+    def user_drivetrain(self, control_speed, slow_turn_axis=0.0, fast_turn_axis=0.0):
         '''
         ### USER DRIVETRAIN - main entry for user control. Should be called every 10ms
         
@@ -802,7 +802,8 @@ class DriverControl:
          - drivetrain_running is used as a flag so we only stop once until the controls move above the deadband again
 
         :param control_speed: is raw controller forward / backwards speed in percent
-        :param control_turn: is raw controller left / right speed in percent
+        :param control_slow_turn: is raw controller left / right speed in percent for the slow axis (this overrides fast axis)
+        :param control_fast_turn: is raw controller left / right speed in percent for the fast axis
 
         :returns: No return value
         '''

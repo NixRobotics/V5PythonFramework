@@ -146,7 +146,7 @@ class Tracking:
         self.previous_left_position = initial_values.left # revolutions
         self.previous_right_position = initial_values.right # revolutions
         self.previous_side_position = initial_values.side # revolutions
-        # self.previous_theta = initial_values.theta --- not used
+        self.previous_theta = initial_values.theta # radians
 
         self._init_rolling_buffers(initial_values, initial_timestamps)
 
@@ -366,7 +366,8 @@ class Tracking:
             delta_forward = self.fwd_wheel_size * (delta_left + delta_right) / 2.0
         delta_strafe = self.side_wheel_size * delta_side
 
-        self.x, self.y, self.theta = self._calc_timestep_arc_chord(self.x, self.y, self.theta, delta_forward, delta_strafe, delta_theta)
+        self.x, self.y, _ = self._calc_timestep_arc_chord(self.x, self.y, self.theta, delta_forward, delta_strafe, delta_theta)
+        self.theta = theta # always use gyro theta
 
         self.previous_left_position = left_position
         self.previous_right_position = right_position
@@ -436,7 +437,8 @@ class Tracking:
         else:
             delta_forward = self.fwd_wheel_size * (delta_left + delta_right) / 2.0
 
-        self.x, self.y, self.theta = self._calc_timestep_arc_chord_fwd_only(self.x, self.y, self.theta, delta_forward, 0.0, delta_theta)
+        self.x, self.y, _ = self._calc_timestep_arc_chord_fwd_only(self.x, self.y, self.theta, delta_forward, 0.0, delta_theta)
+        self.theta = theta # always use gyro theta
 
         self.previous_left_position = left_position
         self.previous_right_position = right_position

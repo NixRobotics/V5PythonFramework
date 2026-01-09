@@ -263,7 +263,7 @@ class DriveProxy:
         self._was_timeout = turn_pid.get_is_timed_out()
         self._stop(self.stop_mode)
         rate = timer.time() / loop_count if loop_count > 0 else 0.0
-        print("Done Turn: ", rate, turn_pid.get_is_settled(), turn_pid.get_is_timed_out())
+        print("Done Turn: ", rate, timer.time(), turn_pid.get_is_settled(), turn_pid.get_is_timed_out())
 
         # for log_entry in turn_pid.log:
         #     print(log_entry[0], ",", log_entry[1], ",", log_entry[2])
@@ -351,7 +351,7 @@ class DriveProxy:
         self._was_timeout = drive_pid.get_is_timed_out()
         self._stop(self.stop_mode)
         rate = timer.time() / loop_count if loop_count > 0 else 0.0
-        print("Done Drive: ", rate, drive_pid.get_is_settled(), drive_pid.get_is_timed_out())
+        print("Done Drive: ", rate, timer.time(), drive_pid.get_is_settled(), drive_pid.get_is_timed_out())
 
         # for log_entry in drive_pid.log:
         #     print(log_entry[0], ",", log_entry[1], ",", log_entry[2])
@@ -451,7 +451,7 @@ class DriveProxy:
 
         self._was_timeout = drive_pid.get_is_timed_out()
         self._stop(self.stop_mode)
-        print("Done Drive: ", drive_pid.get_is_settled(), drive_pid.get_is_timed_out())
+        print("Done Drive: ", timer.time(), drive_pid.get_is_settled(), drive_pid.get_is_timed_out())
 
         # for log_entry in drive_pid.log:
         #     print(log_entry[0], ",", log_entry[1], ",", log_entry[2])
