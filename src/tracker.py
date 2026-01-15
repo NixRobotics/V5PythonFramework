@@ -143,8 +143,8 @@ class Tracking:
         :param initial_timestamps: Description
         :type initial_timestamps: EncoderValues
         '''
-        self.previous_left_position = initial_values.left # revolutions
-        self.previous_right_position = initial_values.right # revolutions
+        self.previous_left_position = initial_values.left * self.fwd_gear_ratio # revolutions
+        self.previous_right_position = initial_values.right * self.fwd_gear_ratio # revolutions
         self.previous_side_position = initial_values.side # revolutions
         self.previous_theta = initial_values.theta # radians
 
@@ -466,6 +466,7 @@ class Tracking:
             self.theta = radians(InertialWrapper.to_angle(orientation.heading))
             self.previous_theta = self.theta
             self._set_sensor_heading(orientation.heading)
+        # TODO: Double check this
         self._init_rolling_buffers(
             Tracking.EncoderValues(0.0, 0.0, 0.0, Tracking.gyro_theta(self.inertial)),
             Tracking.EncoderValues(0, 0, 0, self.inertial.timestamp()), 3)

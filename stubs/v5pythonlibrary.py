@@ -755,7 +755,9 @@ class DriverControl:
                  enable_ramp_control = None,
                  enable_detwitch = None,
                  follow_heading = None,
-                 follow_heading_Kp = None):
+                 follow_heading_Kp = None,
+                 slow_turn_deadband = None,
+                 fast_turn_deadband = None):
         '''
         ### Docstring for set_mode
         
@@ -767,7 +769,10 @@ class DriverControl:
         :param enable_detwitch: Description
         :param follow_heading: Description
         :param follow_heading_Kp: Description
+        :param slow_turn_deadband: Description
+        :param fast_turn_deadband: Description
         '''
+
         pass
 
     def set_speed_limits(self, drive_max = None, turn_max = None, ramp_max = None):

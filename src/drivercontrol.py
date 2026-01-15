@@ -68,6 +68,10 @@ class DriverControl:
         self.follow_heading = None
         self.follow_heading_Kp = 2.0
 
+        # deadband settings
+        self.slow_turn_deadband = 4.0
+        self.fast_turn_deadband = 10.0
+
     def drivetrain_detwitch(self, speed, turn, enabled):
         '''
         ### (INTERNAL) )ETWITCH - reduce turn sensitiviy when robot is moving slowly (turning in place)
@@ -220,7 +224,9 @@ class DriverControl:
                  enable_ramp_control = None,
                  enable_detwitch = None,
                  follow_heading = None,
-                 follow_heading_Kp = None):
+                 follow_heading_Kp = None,
+                 slow_turn_deadband = None,
+                 fast_turn_deadband = None):
         '''
         ### Docstring for set_mode
         
@@ -232,6 +238,8 @@ class DriverControl:
         :param enable_detwitch: Description
         :param follow_heading: Description
         :param follow_heading_Kp: Description
+        :param slow_turn_deadband: Description
+        :param fast_turn_deadband: Description
         '''
         
         if enable_drive_straight is not None: self.enable_drive_straight = enable_drive_straight
@@ -240,6 +248,8 @@ class DriverControl:
         if enable_brake_mode is not None: self.enable_brake_mode = enable_brake_mode
         if enable_ramp_control is not None: self.enable_ramp_control = enable_ramp_control
         if enable_detwitch is not None: self.enable_detwitch = enable_detwitch
+        if slow_turn_deadband is not None: self.slow_turn_deadband = slow_turn_deadband
+        if fast_turn_deadband is not None: self.fast_turn_deadband = fast_turn_deadband
 
         if enable_heading_lock is not None:
             if enable_heading_lock:
@@ -293,8 +303,8 @@ class DriverControl:
         # calculate the drivetrain motor velocities from the controller joystick axes
 
         # just in case - make sure there is no turn coming from the joystick unless we want it
-        control_slow_turn = self.controller_deadband(slow_turn_axis, 4.0)
-        control_fast_turn = self.controller_deadband(fast_turn_axis, 10.0)
+        control_slow_turn = self.controller_deadband(slow_turn_axis, self.slow_turn_deadband)
+        control_fast_turn = self.controller_deadband(fast_turn_axis, self.fast_turn_deadband)
         # deadband logic will keep output at zero until deadband exceeded
         if (control_slow_turn != 0.0):
             control_turn = control_slow_turn
