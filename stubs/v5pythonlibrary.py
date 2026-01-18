@@ -813,3 +813,46 @@ class DriverControl:
         :returns: No return value
         '''
         pass
+
+class Logger:
+
+    MOTOR = 1
+    INERTIAL = 2
+    ROTATION = 3
+
+    DEFAULT_LENGTH = 1000
+
+    def __init__(self, brain: Brain, devices: List, headers: List, max_length: int = -1, time_sec: int = -1, auto_dump: bool = False, file_name: str = "log"):
+        '''
+        Docstring for __init__
+        
+        :param brain: Description
+        :type brain: Brain
+        :param devices: Description
+        :type devices: List
+        :param headers: Description
+        :type headers: List
+        :param max_length: Description
+        :type max_length: int
+        :param time_sec: Description
+        :type time_sec: int
+        :param auto_dump: Description
+        :type auto_dump: bool
+        :param file_name: Description
+        :type file_name: str
+        '''
+        pass
+
+    def start(self):
+        '''
+        Docstring for start
+        
+        '''
+        pass
+
+    def stop(self):
+        '''
+        Docstring for stop
+        
+        '''
+        pass
