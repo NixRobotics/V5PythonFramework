@@ -77,7 +77,7 @@ def initialize_odom_tracker():
     ODOMETRY_FWD_SIZE = 218.344
     ODOMETRY_FWD_OFFSET = 0.0316 * 25.4
     ODOMETRY_FWD_GEAR_RATIO = 1.0
-    ODOMETRY_STRAFE_SIZE = 0.0 # 157.38
+    ODOMETRY_STRAFE_SIZE = 157.38
     ODOMETRY_STRAFE_OFFSET = 4.526 * 25.4
     ODOMETRY_STRAFE_GEAR_RATIO = 1.0
 
@@ -96,6 +96,7 @@ def initialize_odom_tracker():
     rotation_strafe.set_position(0, RotationUnits.REV)
 
     tracker = Tracking(tracker_devices, configuration=tracker_configuration, name="odom")
+    # Seems to work better with no resampling
     tracker.enable_resampling(False)
     # give tracker some time to get going
     wait(0.1, SECONDS)
