@@ -74,7 +74,8 @@ def initialize_motor_tracker():
 
 def initialize_odom_tracker():
 
-    ODOMETRY_FWD_SIZE = 218.344
+    # need to recalibrate these
+    ODOMETRY_FWD_SIZE = 218.344 #219.70 from Remy
     ODOMETRY_FWD_OFFSET = 0.0316 * 25.4
     ODOMETRY_FWD_GEAR_RATIO = 1.0
     ODOMETRY_STRAFE_SIZE = 157.38
@@ -184,7 +185,9 @@ def tracker_switch_test(drive_train: DriveProxy):
         raise RuntimeError("Trackers not initialized")
     
     # BUGBUG: Motor groups don't seem to work when in separate file
-    log = Logger(brain, all_motors + all_sensors, ["l1", "l2", "r1", "r2", "gyro", "fwd", "side"], data_headers=["x", "y"], data_fields_callback=OnLoggerDataUpdate, time_sec=30, auto_dump=True, file_name="tracker_switch_test")
+    log_motors = [left_drive, right_drive]
+    # log_motors = all_motors
+    log = Logger(brain, log_motors + all_sensors, ["lmg", "rmg", "gyro", "fwd", "side"], data_headers=["x", "y"], data_fields_callback=OnLoggerDataUpdate, time_sec=30, auto_dump=True, file_name="tracker_switch_test")
     log.start()
 
     tracker.enable(False)

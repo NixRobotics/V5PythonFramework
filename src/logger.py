@@ -75,7 +75,8 @@ class Logger:
             elif isinstance(device, Rotation):
                 self.types.append(Logger.ROTATION)
             # BUGBUG: Motor groups don't seem to work when in separate file
-            elif isinstance(device, MotorGroup):
+            # elif isinstance(device, MotorGroup):
+            elif type(device) is MotorGroup:
                 self.types.append(Logger.MOTOR_GROUP)
             else:
                 raise ValueError("Unsupported device type")
