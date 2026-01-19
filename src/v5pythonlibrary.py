@@ -1,3 +1,4 @@
+from logger import Logger
 from inertialwrapper import InertialWrapper
 from driveproxy import DriveProxy
 from tracker import Tracking

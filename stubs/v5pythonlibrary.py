@@ -223,11 +223,9 @@ class Tracking:
 
     def current_heading(self):
         '''
-        ### Gets current tracker heading in degrees (may differ from inertial sensor due to time lag)
+        ### Gets current tracker heading in degrees from intertial sensor
 
-        Theoretically this is same as calling GyroHelper.gyro_heading(), but it will vary due to sampling time of the sensor and accumulator effects
-
-        :returns: Internal theta (radians) converted to degrees heading [0, 360)
+        :returns: Gyro degrees heading [0, 360)
 
         '''
         return 0.0
@@ -240,13 +238,13 @@ class Tracking:
         '''
         return Tracking.Orientation(0.0, 0.0, 0.0)
 
-    def set_orientation(self, orientation: Orientation):
+    def set_orientation(self, orientation: Orientation, ignore_heading=False):
         '''
-        ### Docstring for set_orientation
+        Docstring for set_orientation
         
-        :param self: Description
         :param orientation: Description
         :type orientation: Orientation
+        :param ignore_heading: Description
         '''
         pass
 
@@ -297,6 +295,13 @@ class Tracking:
         :type sensor: InertialWrapper
         '''
         return 0.0
+    
+    def stop_tracker(self):
+        '''
+        ### Docstring for stop_tracker
+        
+        '''
+        pass
 
 class SmartDriveWrapper(SmartDrive):
     '''
@@ -816,13 +821,11 @@ class DriverControl:
 
 class Logger:
 
-    MOTOR = 1
-    INERTIAL = 2
-    ROTATION = 3
-
-    DEFAULT_LENGTH = 1000
-
-    def __init__(self, brain: Brain, devices: List, headers: List, max_length: int = -1, time_sec: int = -1, auto_dump: bool = False, file_name: str = "log"):
+    def __init__(self,
+                 brain: Brain, devices: List, headers: List,
+                 data_headers: List = None, data_fields_callback: Callable = None,
+                 max_length: int = -1, time_sec: int = -1,
+                 auto_dump: bool = False, file_name: str = "log"):
         '''
         Docstring for __init__
         
@@ -832,6 +835,10 @@ class Logger:
         :type devices: List
         :param headers: Description
         :type headers: List
+        :param data_headers: Description
+        :type data_headers: List
+        :param data_fields_callback: Description
+        :type data_fields_callback: Callable
         :param max_length: Description
         :type max_length: int
         :param time_sec: Description
@@ -850,9 +857,11 @@ class Logger:
         '''
         pass
 
-    def stop(self):
+    def stop(self, dump: bool = False):
         '''
         Docstring for stop
         
+        :param dump: Description
+        :type dump: bool
         '''
         pass

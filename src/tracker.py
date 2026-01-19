@@ -71,18 +71,25 @@ class Tracking:
                  devices,
                  orientation: Union[Orientation, None] = None,
                  configuration: Union[Configuration, None] = None,
-                 name: str = "Tracker"
+                 name: str = "Tracker",
+                 step_mode = False
                  ):
 
         self._name = name
         print('init', self._name)
+        self._step_mode = step_mode
 
+        # reset logic
         self._is_enabled = False
+        self._first_run = True
+
+        # resampling mode
         self._enable_resampling = True
 
+        # set initial position (if provided)
         x = 0.0 if orientation is None else orientation.x
         y = 0.0 if orientation is None else orientation.y
-        heading = 0.0 if orientation is None else orientation.heading
+        heading = None if orientation is None else orientation.heading
 
         self.x = x # MM NORTH
         self.y = y # MM EAST
@@ -91,11 +98,18 @@ class Tracking:
         # theta is our internal (continous) rotation in radians 
         # theta reflects the true rotation of the robot not the uncorrected gyro version
         # We also set reset the gyro reading to match our heading. The set_sensor_heading() call will apply the gyro scaling factor
-        self.theta = InertialWrapper.to_angle(radians(heading))
-        self.inertial = devices[2]
+
+        self.inertial = devices[2] # type: InertialWrapper
         if self.inertial is None:
             raise Exception("ERROR: INERTIAL SENSOR MUST BE PRESENT ON FIRST INITIALIZATION")
-        self._set_sensor_heading(heading)
+
+        # if a heading is passed in set that to the gyro overriding current value
+        # if not get the correct rotation from the gyro
+        if heading is None:
+            self.theta = radians(self.inertial.rotation())
+        else:
+            self.theta = InertialWrapper.to_angle(radians(heading))
+            self._set_sensor_heading(heading)
 
         # Configuration
         self.fwd_is_odom = False
@@ -108,11 +122,6 @@ class Tracking:
         self.side_offset = Tracking.DEFAULT_SIDE_OFFSET
         if (configuration is not None): self.set_configuration(configuration)
 
-        self.timer = Timer()
-        self.avg_time = 0
-        self.avg_rate = 0
-        self.timestep = 5 # ms
-
         # Pervious values for odometry calculations
         self.previous_left_position = 0.0 # revolutions
         self.previous_right_position = 0.0 # revolutions
@@ -123,7 +132,23 @@ class Tracking:
         self.latest_encoders = self.previous_encoders = [0.0, 0.0, 0.0, 0.0]
         self.latest_timestamps = self.previous_timestamps = [0, 0, 0, 0]
 
-        self.this_thread = self.start_tracker(devices)
+        # Perf trackers
+        self.timer = Timer()
+
+        self._avg_time = 0
+        self._avg_rate = 0
+
+        self._run_time_start = 0
+        self._last_run_time_start = 0
+        self._run_time_sum = 0
+        self._run_time_count = 0
+        self._loop_time_sum = 0
+        self._loop_count = 0
+
+        # Background thread
+        if not self._step_mode:
+            self.this_thread = self.start_tracker(devices) 
+        self.timestep = 5 # ms
 
     @property
     def name(self):
@@ -216,15 +241,12 @@ class Tracking:
 
     def current_heading(self):
         '''
-        ### Gets current tracker heading in degrees (may differ from inertial sensor due to time lag)
+        ### Gets current tracker heading in degrees from intertial sensor
 
-        Theoretically this is same as calling GyroHelper.gyro_heading(), but it will vary due to sampling time of the sensor and accumulator effects
-
-        :returns: Internal theta (radians) converted to degrees heading [0, 360)
+        :returns: Gyro degrees heading [0, 360)
 
         '''
-        heading_deg = degrees(self.theta)
-        return InertialWrapper.to_heading(heading_deg)
+        return self.inertial.heading(DEGREES)
 
         # 0 is older, 1 is newer
     def _linear_interp(self, s0, s1, t0, t1, t_ref):
@@ -450,26 +472,31 @@ class Tracking:
         
         :returns: Tracking.Orientation Tuple
         '''
-        return Tracking.Orientation(self.x, self.y, InertialWrapper.to_heading(degrees(self.theta)))
+        return Tracking.Orientation(self.x, self.y, self.inertial.heading(DEGREES))
 
-    def set_orientation(self, orientation: Orientation):
+    def set_orientation(self, orientation: Orientation, ignore_heading=False):
         '''
-        ### Docstring for set_orientation
+        Docstring for set_orientation
         
-        :param self: Description
         :param orientation: Description
         :type orientation: Orientation
+        :param ignore_heading: Description
         '''
         self.x = orientation.x
         self.y = orientation.y
-        if (orientation.heading is not None):
+        # if we are overriding heading, set gyro and initialize rolling buffers
+        if (orientation.heading is not None and ignore_heading == False):
             self.theta = radians(InertialWrapper.to_angle(orientation.heading))
             self.previous_theta = self.theta
             self._set_sensor_heading(orientation.heading)
-        # TODO: Double check this
-        self._init_rolling_buffers(
-            Tracking.EncoderValues(0.0, 0.0, 0.0, Tracking.gyro_theta(self.inertial)),
-            Tracking.EncoderValues(0, 0, 0, self.inertial.timestamp()), 3)
+            # TODO: Double check this
+            self._init_rolling_buffers(
+                Tracking.EncoderValues(0.0, 0.0, 0.0, Tracking.gyro_theta(self.inertial)),
+                Tracking.EncoderValues(0, 0, 0, self.inertial.timestamp()), 3)
+        # Else just set theta to current gyro reading
+        else:            
+            self.theta = radians(self.inertial.rotation())
+            self.previous_theta = self.theta
 
     def trajectory_to_point(self, x: float, y: float, reverse: bool = False):
         '''
@@ -575,7 +602,6 @@ class Tracking:
         '''
         ### INTERNAL Docstring for avg_motor_times
         
-        :param self: Description
         :param mg: Description
         :type mg: MotorGroup
         '''
@@ -587,12 +613,64 @@ class Tracking:
             sum += m.timestamp()
         sum = sum / len(mg._motors)
         return sum
+    
+    def _perf_on_new_loop(self):
+        '''
+        ### INTERNAL Docstring for _perf_on_new_loop
+        
+        :param self: Description
+        '''
+        self._run_time_start = self.timer.system_high_res()
+
+    def _perf_on_end_loop(self):
+        '''
+        ### INTERNAL Docstring for _perf_on_end_loop
+        
+        :param self: Description
+        '''
+        if not self._first_run:
+            run_time_end = self.timer.system_high_res()
+            self._run_time_sum += run_time_end - self._run_time_start
+            self._run_time_count += 1
+
+            self._avg_time = self._run_time_sum / self._run_time_count
+            self._loop_time_sum += (self._run_time_start - self._last_run_time_start) / 1000.0
+            self._avg_rate = self._loop_time_sum / self._loop_count
+
+        self._last_run_time_start = self._run_time_start
+        self._loop_count += 1
+
+    def _track_step(self, timestamps, values):
+        '''
+        ### INTERNAL Docstring for _track_step
+        
+        :param timestamps: Description
+        :param values: Description
+        '''
+
+        self._perf_on_new_loop()
+
+        if (self._is_enabled):
+            if self._first_run:
+                self._set_initial_values(Tracking.EncoderValues(values[0], values[1], values[2], values[3]),
+                                            Tracking.EncoderValues(timestamps[0], timestamps[1], timestamps[2], timestamps[3]))
+
+            if not self._first_run:
+                if self.side_wheel_size == 0.0:
+                    self._update_location_fwd_only(values, timestamps)
+                else:
+                    self._update_location(values, timestamps)
+
+            self._perf_on_end_loop()
+
+            self._first_run = False
+        else:
+            self._first_run = True
 
     def _track_motors(self, left_drive: MotorGroup, right_drive: MotorGroup, inertial: InertialWrapper):
         '''
-        ### INTERNAL Docstring for track_motors
+        ### INTERNAL Docstring for _track_motors
         
-        :param self: Description
         :param left_drive: Description
         :type left_drive: MotorGroup
         :param right_drive: Description
@@ -602,52 +680,25 @@ class Tracking:
         '''
         print("Tracker Using Motor Encoders")
 
-        first_run = True
-        run_time_sum = 0
-        run_time_count = 0
-        loop_time_sum = 0
-        loop_count = 0
+        last_timestamps = [0, 0, 0, 0]
 
         while(True):
-            run_time_start = self.timer.system_high_res()
+            values = [left_drive.position(RotationUnits.REV), right_drive.position(RotationUnits.REV), 0.0, Tracking.gyro_theta(inertial)]
+            timestamps = [self._avg_motor_times(left_drive), self._avg_motor_times(right_drive), 0, inertial.timestamp()]
 
-            if (self._is_enabled):
-                values = [left_drive.position(RotationUnits.REV), right_drive.position(RotationUnits.REV), 0.0, Tracking.gyro_theta(inertial)]
-                timestamps = [self._avg_motor_times(left_drive), self._avg_motor_times(right_drive), 0, inertial.timestamp()]
-                if first_run:
-                    last_timestamps = [0, 0, 0, 0]
-                    self._set_initial_values(Tracking.EncoderValues(values[0], values[1], values[2], values[3]),
-                                             Tracking.EncoderValues(timestamps[0], timestamps[1], timestamps[2], timestamps[3]))
+            updated = False
+            for i in range(4):
+                if timestamps[i] != last_timestamps[i]: updated = True
+            last_timestamps = timestamps
 
-                updated = False
-                for i in range(4):
-                    if timestamps[i] != last_timestamps[i]: updated = True
-                last_timestamps = timestamps
-
-                if updated and not first_run:
-                    self._update_location_fwd_only(values, timestamps)
-
-                    run_time_end = self.timer.system_high_res()
-                    run_time_sum += run_time_end - run_time_start
-                    run_time_count += 1
-                    self.avg_time = run_time_sum / run_time_count
-                
-                if updated:
-                    if not first_run:
-                        loop_time_sum += (run_time_start - last_run_time_start) / 1000.0
-                        self.avg_rate = loop_time_sum / loop_count
-                    last_run_time_start = run_time_start
-                    loop_count += 1
-
-                first_run = False
-            else:
-                first_run = True
-
+            if (updated):
+                self._track_step(timestamps, values)
+    
             wait(self.timestep, MSEC)
 
     def _track_odometry(self, rotation_fwd: Rotation, rotation_side: Rotation, inertial: InertialWrapper):
         '''
-        ### INTERNAL Docstring for track_odometry
+        ### INTERNAL Docstring for _track_odometry
         
         :param self: Description
         :param rotation_fwd: Description
@@ -659,49 +710,19 @@ class Tracking:
         '''
         print("Tracker Using Rotation Sensors")
 
-        first_run = True
-        run_time_sum = 0
-        run_time_count = 0
-        loop_time_sum = 0
-        loop_count = 0
+        last_timestamps = [0, 0, 0, 0]
 
         while(True):
-            run_time_start = self.timer.system_high_res()
+            values = [rotation_fwd.position(RotationUnits.REV), 0.0, rotation_side.position(RotationUnits.REV), Tracking.gyro_theta(inertial)]
+            timestamps = [rotation_fwd.timestamp(), 0, rotation_side.timestamp(), inertial.timestamp()]
 
-            if (self._is_enabled):
-                values = [rotation_fwd.position(RotationUnits.REV), 0.0, rotation_side.position(RotationUnits.REV), Tracking.gyro_theta(inertial)]
-                timestamps = [rotation_fwd.timestamp(), 0, rotation_side.timestamp(), inertial.timestamp()]
-                if first_run:
-                    last_timestamps = [0, 0, 0, 0]
-                    self._set_initial_values(Tracking.EncoderValues(values[0], values[1], values[2], values[3]),
-                                             Tracking.EncoderValues(timestamps[0], timestamps[1], timestamps[2], timestamps[3]))
+            updated = False
+            for i in range(4):
+                if timestamps[i] != last_timestamps[i]: updated = True
+            last_timestamps = timestamps
 
-                updated = False
-                for i in range(4):
-                    if timestamps[i] != last_timestamps[i]: updated = True
-                last_timestamps = timestamps
-
-                if updated and not first_run:
-                    if self.side_wheel_size == 0.0:
-                        self._update_location_fwd_only(values, timestamps)
-                    else:
-                        self._update_location(values, timestamps)
-
-                    run_time_end = self.timer.system_high_res()
-                    run_time_sum += run_time_end - run_time_start
-                    run_time_count += 1
-                    self.avg_time = run_time_sum / run_time_count
-
-                if updated:
-                    if not first_run:
-                        loop_time_sum += (run_time_start - last_run_time_start) / 1000.0
-                        self.avg_rate = loop_time_sum / loop_count
-                    last_run_time_start = run_time_start
-                    loop_count += 1
-
-                first_run = False
-            else:
-                first_run = True
+            if (updated):
+                self._track_step(timestamps, values)
 
             wait(self.timestep, MSEC)
 
@@ -732,3 +753,10 @@ class Tracking:
         :param devices: Description
         '''
         return Thread(self._tracker_thread, (devices, 0))
+
+    def stop_tracker(self):
+        '''
+        ### Docstring for stop_tracker
+        '''
+        self._is_enabled = False
+        self.this_thread.stop()

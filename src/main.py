@@ -30,23 +30,21 @@ all_motors = [l1, l2, r1, r2]
 GYRO_SCALE_FOR_READOUT = 362.0/360.0
 inertial = InertialWrapper(Ports.PORT5, GYRO_SCALE_FOR_READOUT)
 
+rotation_fwd = Rotation(Ports.PORT6, False)
+rotation_strafe = Rotation(Ports.PORT7, False)
+all_sensors = [inertial, rotation_fwd, rotation_strafe]
+
+ROBOT_INITIALIZED = False
+ROBOT_INITIALIZATION_FAILED = False
+
 USING_TRACKING_WHEELS = False
-USING_RESAMPLING = True
+USING_RESAMPLING = False
 
-if USING_TRACKING_WHEELS:
-    rotation_fwd = Rotation(Ports.PORT6, False)
-    rotation_strafe = Rotation(Ports.PORT7, False)
-    all_sensors = [inertial, rotation_fwd, rotation_strafe]
+motor_tracker = None  # type: Tracking | None
+odom_tracker = None  # type: Tracking | None
+tracker = None # type: Tracking | None
 
-    ODOMETRY_FWD_SIZE = 218.344
-    ODOMETRY_FWD_OFFSET = 0.0316 * 25.4
-    ODOMETRY_FWD_GEAR_RATIO = 1.0
-    ODOMETRY_STRAFE_SIZE = 157.38
-    ODOMETRY_STRAFE_OFFSET = 4.526 * 25.4
-    ODOMETRY_STRAFE_GEAR_RATIO = 1.0
-
-else:
-    all_sensors = [inertial]
+def initialize_motor_tracker():
 
     ODOMETRY_FWD_SIZE = DRIVETRAIN_WHEEL_SIZE
     ODOMETRY_FWD_OFFSET = 0.0
@@ -55,16 +53,8 @@ else:
     ODOMETRY_STRAFE_OFFSET = 0.0
     ODOMETRY_STRAFE_GEAR_RATIO = 0.0
 
-ROBOT_INITIALIZED = False
-ROBOT_INITIALIZATION_FAILED = False
-
-tracker = None  # type: Tracking | None
-
-def initialize_tracker():
-    global tracker
-    starting_location = Tracking.Orientation(0.0, 0.0, 0.0)
     tracker_configuration = Tracking.Configuration(
-            fwd_is_odom=USING_TRACKING_WHEELS,
+            fwd_is_odom=False,
             fwd_wheel_size=ODOMETRY_FWD_SIZE,
             fwd_gear_ratio=ODOMETRY_FWD_GEAR_RATIO,
             fwd_offset=ODOMETRY_FWD_OFFSET,
@@ -72,18 +62,78 @@ def initialize_tracker():
             side_gear_ratio=ODOMETRY_STRAFE_GEAR_RATIO,
             side_offset=ODOMETRY_STRAFE_OFFSET
         )
-    if USING_TRACKING_WHEELS:
-        tracker_devices = [rotation_fwd, rotation_strafe, inertial]
-    else:
-        tracker_devices = [left_drive, right_drive, inertial]
 
-    tracker = Tracking(tracker_devices, starting_location, tracker_configuration)
-    tracker.enable_resampling(USING_RESAMPLING)
+    tracker_devices = [left_drive, right_drive, inertial]
+
+    tracker = Tracking(tracker_devices, configuration=tracker_configuration, name="motor")
+    tracker.enable_resampling(False)
     # give tracker some time to get going
     wait(0.1, SECONDS)
 
+    return tracker
+
+def initialize_odom_tracker():
+
+    ODOMETRY_FWD_SIZE = 218.344
+    ODOMETRY_FWD_OFFSET = 0.0316 * 25.4
+    ODOMETRY_FWD_GEAR_RATIO = 1.0
+    ODOMETRY_STRAFE_SIZE = 0.0 # 157.38
+    ODOMETRY_STRAFE_OFFSET = 4.526 * 25.4
+    ODOMETRY_STRAFE_GEAR_RATIO = 1.0
+
+    tracker_configuration = Tracking.Configuration(
+            fwd_is_odom=True,
+            fwd_wheel_size=ODOMETRY_FWD_SIZE,
+            fwd_gear_ratio=ODOMETRY_FWD_GEAR_RATIO,
+            fwd_offset=ODOMETRY_FWD_OFFSET,
+            side_wheel_size=ODOMETRY_STRAFE_SIZE,
+            side_gear_ratio=ODOMETRY_STRAFE_GEAR_RATIO,
+            side_offset=ODOMETRY_STRAFE_OFFSET
+        )
+
+    tracker_devices = [rotation_fwd, rotation_strafe, inertial]
+    rotation_fwd.set_position(0, RotationUnits.REV)
+    rotation_strafe.set_position(0, RotationUnits.REV)
+
+    tracker = Tracking(tracker_devices, configuration=tracker_configuration, name="odom")
+    tracker.enable_resampling(False)
+    # give tracker some time to get going
+    wait(0.1, SECONDS)
+
+    return tracker
+
+def change_tracker(new_tracker: Tracking, old_tracker: Tracking):
+    global tracker
+    if new_tracker is None or old_tracker is None:
+        raise Exception("tracker not initialized")
+    
+    print_tracker(old_tracker, 0, 0)
+
+    location = old_tracker.get_orientation()
+    old_tracker.enable(False)
+    wait(20, MSEC)
+    new_tracker.set_orientation(location, ignore_heading=True)
+    wait(20, MSEC)
+    new_tracker.enable(True)
+    wait(20, MSEC)
+    print_tracker(new_tracker, 0, 0)
+
+    tracker = new_tracker
+    return tracker
+
+def print_tracker(tracker: Tracking, x = 0.0, y = 0.0, verbose = False):
+    orientation = tracker.get_orientation()
+    print("{} X: {:.1f} mm, Y: {:.1f} mm, Heading: {:.2f} deg".format(tracker.name, orientation.x, orientation.y, orientation.heading))
+    if verbose:
+        origin_distance, origin_heading = tracker.trajectory_to_point(x, y)
+        back_x, back_y = tracker.point_on_robot(-160.0, -7.5 * 25.4)
+        print(" - To Point: Distance: {:.1f} mm, Heading: {:.2f} deg".format(origin_distance, origin_heading))
+        print(" - Back X: {:.1f} mm, Back Y: {:.1f} mm".format(back_x, back_y))
+        print(" - Perf Avg Rate: {:.1f}ms, Avg Time: {:.1f} us".format(tracker._avg_rate, tracker._avg_time))
+
 def pre_autonomous():
     global ROBOT_INITIALIZED, ROBOT_INITIALIZATION_FAILED
+    global tracker, motor_tracker, odom_tracker
 
     wait(0.1, SECONDS)
 
@@ -104,6 +154,7 @@ def pre_autonomous():
         while inertial.is_calibrating():
             wait(50, MSEC)
 
+
     if ROBOT_INITIALIZATION_FAILED:
         brain.screen.clear_screen()
         brain.screen.print("INITIALIZATION FAILED: Check Connections")
@@ -111,7 +162,9 @@ def pre_autonomous():
             wait(1, SECONDS)
     print("done ...")
 
-    initialize_tracker()
+    motor_tracker = initialize_motor_tracker()
+    odom_tracker = initialize_odom_tracker()
+    tracker = odom_tracker if USING_TRACKING_WHEELS else motor_tracker
 
     brain.screen.print("pre auton -- done")
     brain.screen.new_line()
@@ -119,18 +172,82 @@ def pre_autonomous():
 
     ROBOT_INITIALIZED = True
 
+def OnLoggerDataUpdate():
+    if tracker is None:
+        raise RuntimeError("Tracker not initialized")
+    return tracker.x, tracker.y
 
-def print_tracker(tracker: Tracking, x = 0.0, y = 0.0, reverse = False):
-    orientation = tracker.get_orientation()
-    origin_distance, origin_heading = tracker.trajectory_to_point(x, y, reverse=reverse)
-    print("X: {:.1f} mm, Y: {:.1f} mm, Heading: {:.2f} deg".format(orientation.x, orientation.y, orientation.heading))
-    print(" - To Point: Distance: {:.1f} mm, Heading: {:.2f} deg".format(origin_distance, origin_heading))
-    #print(" - Perf: {:.3f}us, {},{},{},{}".format(
-    #    tracker.avg_time,
-    #    tracker.previous_timestamps.left,
-    #    tracker.previous_timestamps.right,
-    #    tracker.previous_timestamps.side,
-    #    tracker.previous_timestamps.theta))
+def tracker_switch_test(drive_train: DriveProxy):
+    global tracker
+    if motor_tracker is None or odom_tracker is None or tracker is None:
+        raise RuntimeError("Trackers not initialized")
+    
+    # BUGBUG: Motor groups don't seem to work when in separate file
+    log = Logger(brain, all_motors + all_sensors, ["l1", "l2", "r1", "r2", "gyro", "fwd", "side"], data_headers=["x", "y"], data_fields_callback=OnLoggerDataUpdate, time_sec=30, auto_dump=True, file_name="tracker_switch_test")
+    log.start()
+
+    tracker.enable(False)
+    wait(20, MSEC)
+
+    tracker = odom_tracker
+    tracker.set_orientation(Tracking.Orientation(300.0, 300.0, 0.0))
+    tracker.enable(True)
+
+    wait (20, MSEC)
+
+    points = [
+        (1500.0, 300.0),
+        (300.0, -300.0),
+        (1500.0, -300.0),
+        (300.0, 300.0)
+    ]
+
+    switch = False
+    i = 0
+    for point in points:
+        x = point[0]
+        y = point[1]
+        print("----- To Point -----")
+        print_tracker(tracker, x, y)
+
+        distance, heading = tracker.trajectory_to_point(x, y)
+        drive_train.turn_to_heading(heading)
+        distance, heading = tracker.trajectory_to_point(x, y)
+        drive_train.drive_for(FORWARD, distance, MM, heading)
+        drive_train.stop(BRAKE)
+        wait (200, MSEC)
+        print_tracker(tracker, x, y, verbose=True)
+
+        if (switch):
+            if i % 2 == 1:
+                print("----- Switch to Motor Tracker -----")
+                motor_tracker.set_orientation(tracker.get_orientation(), ignore_heading=True)
+                odom_tracker.enable(False)
+                motor_tracker.enable(True)
+                tracker = motor_tracker
+            else:
+                print("----- Switch to Odom Tracker -----")
+                odom_tracker.set_orientation(tracker.get_orientation(), ignore_heading=True)
+                motor_tracker.enable(False)
+                odom_tracker.enable(True)
+                tracker = odom_tracker
+
+        wait(20, MSEC)
+        print_tracker(tracker, x, y)
+        i += 1
+
+    drive_train.turn_to_heading(0)
+    drive_train.stop(BRAKE)
+    wait (200, MSEC)
+    print_tracker(tracker, 300.0, 300.0, verbose=True)
+    drive_train.stop(COAST)
+
+    motor_tracker.stop_tracker()
+    odom_tracker.stop_tracker()
+
+    wait(100, MSEC)
+
+    log.stop(True)
 
 # DEMO1: Once robot has been tuned for individual commands this will turn the robot and drive forward and backwards
 def auton1_drive_straight(drive_train: DriveProxy, tracker: Tracking):
@@ -397,7 +514,14 @@ def test_concurrent(drive_train: DriveProxy, tracker: Tracking):
     print(drive_train.drive_for(REVERSE, 100, MM, wait = True))
     print_tracker(tracker)
 
+AUTON_STARTED = False
+
 def autonomous():
+    global AUTON_STARTED
+    if (AUTON_STARTED):
+        raise RuntimeError("autonomous called multiple times")
+    AUTON_STARTED = True
+
     while not ROBOT_INITIALIZED:
         wait(10, MSEC)
 
@@ -421,9 +545,11 @@ def autonomous():
     free = gc.mem_free() # type: ignore
     print(free)
 
+    tracker_switch_test(drive_train)
+
     # calibration_tracking_wheels()
     # auton1_drive_straight(drive_train, tracker)
-    auton2_drive_to_points(drive_train, tracker)
+    # auton2_drive_to_points(drive_train, tracker)
     # auton3_drive_to_points_long(drive_train, tracker)
     # auton4_circle_drive(drive_train, tracker)
     # auton5_circle_follow(drive_train, tracker)
@@ -431,7 +557,17 @@ def autonomous():
 
     print("auton done")
 
+    while True:
+        wait(1, SECONDS)
+
+USER_STARTED = False
+
 def user_control():
+    global USER_STARTED
+    if (USER_STARTED):
+        raise RuntimeError("user_control called multiple times")
+    USER_STARTED = True
+
     print("user control")
 
     while not ROBOT_INITIALIZED:
