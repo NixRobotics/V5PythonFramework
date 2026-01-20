@@ -381,3 +381,8 @@ class Logger:
         #self.tdata = None
         #self.bytearray = None
 
+    def fileio_test(self):
+        f = open("test.txt", "w")
+        f.write("This is a test\n")
+        f.flush()
+        f.close()

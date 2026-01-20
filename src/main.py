@@ -184,10 +184,10 @@ def tracker_switch_test(drive_train: DriveProxy):
     if motor_tracker is None or odom_tracker is None or tracker is None:
         raise RuntimeError("Trackers not initialized")
     
-    # BUGBUG: Motor groups don't seem to work when in separate file
     log_motors = [left_drive, right_drive]
     # log_motors = all_motors
     log = Logger(brain, log_motors + all_sensors, ["lmg", "rmg", "gyro", "fwd", "side"], data_headers=["x", "y"], data_fields_callback=OnLoggerDataUpdate, time_sec=30, auto_dump=True, file_name="tracker_switch_test")
+    # log.fileio_test()
     log.start()
 
     tracker.enable(False)

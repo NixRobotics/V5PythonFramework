@@ -2,6 +2,7 @@
 from vex import *
 from math import sin, cos, radians, degrees, atan2, sqrt
 from collections import namedtuple
+from array import array
 from inertialwrapper import InertialWrapper
 from tracker import Tracking
 from logger import Logger
@@ -29,14 +30,13 @@ class LoggedTracking():
         motor_device_count = len(self.motor_devices)
         odom_device_count = len(self.odom_devices)
 
-        current_motor_timestamps = [0.0] * motor_device_count
-        current_motor_values = [0.0] * motor_device_count
+        current_motor_timestamps = array('i', [0] * motor_device_count)
+        last_motor_timestamps = array('i', [0] * motor_device_count)
+        current_motor_values = array('f', [0.0] * motor_device_count)
 
-        current_odom_timestamps = [0.0] * odom_device_count
-        current_odom_values = [0.0] * odom_device_count
-
-        last_motor_timestamps = [0] * motor_device_count
-        last_odom_timestamps = [0] * odom_device_count
+        current_odom_timestamps = array('i', [0] * odom_device_count)
+        last_odom_timestamps = array('i', [0] * odom_device_count)
+        current_odom_values = array('f', [0.0] * odom_device_count)
 
         while True:
 

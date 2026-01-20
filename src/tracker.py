@@ -3,6 +3,7 @@ from vex import *
 from math import sin, cos, radians, degrees, atan2, sqrt
 from collections import namedtuple
 from inertialwrapper import InertialWrapper
+import array
 
 class Tracking:
     '''
@@ -129,8 +130,8 @@ class Tracking:
         self.previous_theta = self.theta # radians
 
         # Keep track of raw encoder values for resampling
-        self.latest_encoders = self.previous_encoders = [0.0, 0.0, 0.0, 0.0]
-        self.latest_timestamps = self.previous_timestamps = [0, 0, 0, 0]
+        self.latest_encoders = self.previous_encoders = array.array('f', [0.0, 0.0, 0.0, 0.0])
+        self.latest_timestamps = self.previous_timestamps = array.array('i', [0, 0, 0, 0])
 
         # Perf trackers
         self.timer = Timer()
@@ -266,7 +267,7 @@ class Tracking:
         s_new = s0 + (t_ref - t0) * ((s1 - s0) / (t1 - t0))
         return s_new
         
-    def _rolling_buffer(self, values, timestamps, index):
+    def _rolling_buffer(self, values: array.array, timestamps: array.array, index: int):
         '''
         ### INTERNAL Docstring for rolling_buffer
         
@@ -287,7 +288,7 @@ class Tracking:
         
         return False
 
-    def _resample(self, values, timestamps):
+    def _resample(self, values: array.array, timestamps: array.array):
         '''
         ### INTERNAL Docstring for resample
         
@@ -302,7 +303,7 @@ class Tracking:
         for i in range(len(values)):
             updated[i] = self._rolling_buffer(values, timestamps, i)
 
-        return_values = [0.0] * len(values)
+        return_values = array.array('f', [0.0] * len(values))
         reference_time_index = len(values) - 1
         reference_time_stamp = self.latest_timestamps[reference_time_index]
         for i in range(len(values) - 1):
@@ -352,7 +353,7 @@ class Tracking:
 
         return (x + delta_global_x, y + delta_global_y, theta + delta_theta)
 
-    def _update_location(self, values, timestamps):
+    def _update_location(self, values: array.array, timestamps: array.array):
         '''
         ### INTERNAL
 
@@ -427,7 +428,7 @@ class Tracking:
 
         return (x + delta_global_x, y + delta_global_y, theta + delta_theta)
 
-    def _update_location_fwd_only(self, values, timestamps):
+    def _update_location_fwd_only(self, values: array.array, timestamps: array.array):
         '''
         ### INTERNAL
 
@@ -598,7 +599,7 @@ class Tracking:
         angle = InertialWrapper.to_angle(heading)
         self.inertial.set_rotation(angle, RotationUnits.DEG)
 
-    def _avg_motor_times(self, mg: MotorGroup):
+    def _avg_motor_times(self, mg: MotorGroup) -> int:
         '''
         ### INTERNAL Docstring for avg_motor_times
         
@@ -611,8 +612,8 @@ class Tracking:
         sum = 0
         for m in mg._motors:
             sum += m.timestamp()
-        sum = sum / len(mg._motors)
-        return sum
+        sum = (sum / len(mg._motors))
+        return int(sum + 0.5)
     
     def _perf_on_new_loop(self):
         '''
@@ -640,7 +641,7 @@ class Tracking:
         self._last_run_time_start = self._run_time_start
         self._loop_count += 1
 
-    def _track_step(self, timestamps, values):
+    def _track_step(self, timestamps: array.array, values: array.array):
         '''
         ### INTERNAL Docstring for _track_step
         
@@ -680,17 +681,25 @@ class Tracking:
         '''
         print("Tracker Using Motor Encoders")
 
-        last_timestamps = [0, 0, 0, 0]
+        values = array.array('f', [0.0, 0.0, 0.0, 0.0])
+        timestamps = array.array('i', [0, 0, 0, 0])
+        last_timestamps = array.array('i', [0, 0, 0, 0])
 
         while(True):
-            values = [left_drive.position(RotationUnits.REV), right_drive.position(RotationUnits.REV), 0.0, Tracking.gyro_theta(inertial)]
-            timestamps = [self._avg_motor_times(left_drive), self._avg_motor_times(right_drive), 0, inertial.timestamp()]
+            values[0] = left_drive.position(RotationUnits.REV)
+            values[1] = right_drive.position(RotationUnits.REV)
+            values[2] = 0.0
+            values[3] = Tracking.gyro_theta(inertial)
+
+            timestamps[0] = self._avg_motor_times(left_drive)
+            timestamps[1] = self._avg_motor_times(right_drive)
+            timestamps[2] = 0
+            timestamps[3] = inertial.timestamp()
 
             updated = False
             for i in range(4):
                 if timestamps[i] != last_timestamps[i]: updated = True
-            last_timestamps = timestamps
-
+                last_timestamps[i] = timestamps[i]
             if (updated):
                 self._track_step(timestamps, values)
     
@@ -710,16 +719,25 @@ class Tracking:
         '''
         print("Tracker Using Rotation Sensors")
 
-        last_timestamps = [0, 0, 0, 0]
+        values = array.array('f', [0.0, 0.0, 0.0, 0.0])
+        timestamps = array.array('i', [0, 0, 0, 0])
+        last_timestamps = array.array('i', [0, 0, 0, 0])
 
         while(True):
-            values = [rotation_fwd.position(RotationUnits.REV), 0.0, rotation_side.position(RotationUnits.REV), Tracking.gyro_theta(inertial)]
-            timestamps = [rotation_fwd.timestamp(), 0, rotation_side.timestamp(), inertial.timestamp()]
+            values[0] = rotation_fwd.position(RotationUnits.REV)
+            values[1] = 0.0
+            values[2] = rotation_side.position(RotationUnits.REV)
+            values[3] = Tracking.gyro_theta(inertial)
+
+            timestamps[0] = rotation_fwd.timestamp()
+            timestamps[1] = 0
+            timestamps[2] = rotation_side.timestamp()
+            timestamps[3] = inertial.timestamp()
 
             updated = False
             for i in range(4):
                 if timestamps[i] != last_timestamps[i]: updated = True
-            last_timestamps = timestamps
+                last_timestamps[i] = timestamps[i]
 
             if (updated):
                 self._track_step(timestamps, values)
