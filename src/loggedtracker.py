@@ -29,10 +29,10 @@ class LoggedTracking():
         motor_device_count = len(self.motor_devices)
         odom_device_count = len(self.odom_devices)
 
-        current_motor_timestamps = [0] * motor_device_count
+        current_motor_timestamps = [0.0] * motor_device_count
         current_motor_values = [0.0] * motor_device_count
 
-        current_odom_timestamps = [0] * odom_device_count
+        current_odom_timestamps = [0.0] * odom_device_count
         current_odom_values = [0.0] * odom_device_count
 
         last_motor_timestamps = [0] * motor_device_count

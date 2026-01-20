@@ -821,47 +821,138 @@ class DriverControl:
 
 class Logger:
 
+    '''
+    Smart data capture for VEX devices and optional user-defined data fields. Logs data to the Brain's SD card in CSV format.\\
+    Currently supports Motor, MotorGroup, Inertial, and Rotation devices.
+    '''
+
     def __init__(self,
                  brain: Brain, devices: List, headers: List,
-                 data_headers: List = None, data_fields_callback: Callable = None,
+                 data_headers: List | None = None, data_fields_callback: Callable | None = None,
                  max_length: int = -1, time_sec: int = -1,
                  auto_dump: bool = False, file_name: str = "log"):
         '''
-        Docstring for __init__
+        ### Smart data capture for VEX devices and optional user-defined data fields.
+
+        Logs data to the Brain's SD card in CSV format. Currently supports Motor, MotorGroup, Inertial, and Rotation devices.
+
+        ### Device Logging
+
+        Devices are specified as a list of instances, e.g. [motor1, interial1]. These are followed by a list of headers for each device, e.g. ["motor1", "inertial1"].
+
+        Devices are automatically polled on average every 10ms, and data is logged when a change in timestamp is detected.
+        - The position value in TURNS or REVOLUTIONS is captured for motors, motor groups and rotation sensors.
+        - The rotation value in DEGREES is captured for inertial sensors.
+
+        Each value is logged along with its timestamp in milliseconds.
+
+        ### User-defined Data Fields
+
+        Optional user-defined data fields can be logged by providing a list of data field headers, e.g. ["custom1", "custom2"],
+        along with a callback function that returns a tuple of float values for each data field, e.g.
+
+        def get_custom_data(): return (1.0, 2.0)
+
+        This callback is expected to be efficient as it will be called every 10ms. No timestamp is logged for user-defined data fields -
+        it gets called when any of the device timestamps change.
+
+        ### Example CSV format:
+
+        motor1_value, motor1_time, inertial1_value, inertial1_time, custom1, custom2\\
+        1.5, 1000, 90.0, 1005, 3.14, 2.71\\
+        1.7, 1010, 91.0, 1015, 3.15, 2.72\\
+        ...
+
+        ### Logging Duration
+
+        By default the logger captures 1000 entries (approximately 10 seconds of data at 10ms intervals). This can be overridden by specifying either a maximum number of entries via max_length,
+        or a maximum time duration via time_sec. If both are specified, max_length takes precedence.
+
+        Logging is performed as lightweight as possible. If auto_dump is specified, then the logged data will be automatically saved to the SD card when the internal buffer is full or the time limit is reached.
+        SD card access is noticeable during during opertion as it slows down IO calls, so if you only want to log a portion of the run, you
+        can stop the logger manually when convenient at which point it will then dump the data to the SD card.
+
+        ### SD Card Saving
+
+        Saving to SDCard for a 60sec run will take about 10 seconds. Best way of capturing 60sec auton therefore is to start the program
+        using the VEXNet Field Switch which keeps the program running after the auton ends. Using the Competition->Program Skills mode
+        on the controller will stop the program immediately after auton ends which will not allow enough time to save the log data for a
+        60 second run.
         
-        :param brain: Description
+        ### Parameters
+
+        :param brain: The Brain instance to use for logging, provides access to the SD card
         :type brain: Brain
-        :param devices: Description
+        :param devices: List of devices to log, currently supports Motor, MotorGroup, Inertial, Rotation, e.g. [motor1, inertial1]
         :type devices: List
-        :param headers: Description
+        :param headers: List of strings that will be used as headers for each column of the .csv file, e.g. ["motor1", "inertial1"]
         :type headers: List
-        :param data_headers: Description
-        :type data_headers: List
-        :param data_fields_callback: Description
-        :type data_fields_callback: Callable
-        :param max_length: Description
+        :param data_headers: List of strings for user-defined data fields to log, e.g. ["custom1", "custom2"]
+        :type data_headers: List | None
+        :param data_fields_callback: Callback function that returns a list of float values for the user-defined data fields as a tuple,
+            e.g. def get_custom_data(): return (1.0, 2.0)
+            Expect this to be called every 10ms, so keep it efficient
+        :type data_fields_callback: Callable | None
+        :param (optional) max_length: Overrides the seconds parameter to set the maximum number of data rows to log. Default is -1 (disabled).
         :type max_length: int
-        :param time_sec: Description
+        :param (optional) time_sec: Optional maximum time in seconds to log data. Default is -1 (disabled).
+            If neither max_length nor time_sec is specified, the default length of 1000 entries is used which corresponds to approximately 10 seconds of data
         :type time_sec: int
-        :param auto_dump: Description
+        :param auto_dump: If True, this will automatically dump the logged data to the SD card when the internal buffer is full or time limit is reached
         :type auto_dump: bool
-        :param file_name: Description
+        :param file_name: Optional base file name to use when dumping log data to SD card.
+            A unique file name will be generated by appending an incrementing number up to 100. Default is "log", so file name is log1.csv, log2.csv, etc.
         :type file_name: str
+        :return: New Logger instance
+        :rtype: Logger
+
+        ### Example Usage
+
+        ```python
+        from vex import *
+        from logger import Logger
+
+        brain = Brain()
+        motor1 = Motor(Ports.PORT1)
+        inertial1 = Inertial(Ports.PORT2)
+
+        def get_custom_data():
+            # Return some custom data values
+            return (3.14, 2.71)
+
+        logger = Logger(brain,
+                        devices=[motor1, inertial1],
+                        headers=["motor1", "inertial1"],
+                        data_headers=["custom1", "custom2"],
+                        data_fields_callback=get_custom_data,
+                        time_sec=60,
+                        auto_dump=True,
+                        file_name="auton_log")
+
+        logger.start()
+        # Run your autonomous code here
+        wait(60, SECONDS)  # Simulate 60 seconds of autonomous operation
+        logger.stop() # optional stop
+
+        ```
         '''
         pass
 
     def start(self):
         '''
-        Docstring for start
-        
+        ### Start logging data
         '''
         pass
 
     def stop(self, dump: bool = False):
         '''
-        Docstring for stop
-        
-        :param dump: Description
+        ### Stop logging data
+
+        Optional call to dump the logged data before the internal buffer is full or the time limit is reached.
+
+        Note that if dump parameter is not specified, and auto_dump was set to True during initialization, the data will NOT be saved
+
+        :param dump: If True, will dump the logged data to the SD card
         :type dump: bool
         '''
         pass

@@ -123,11 +123,11 @@ def change_tracker(new_tracker: Tracking, old_tracker: Tracking):
     tracker = new_tracker
     return tracker
 
-def print_tracker(tracker: Tracking, x = 0.0, y = 0.0, verbose = False):
+def print_tracker(tracker: Tracking, x = 0.0, y = 0.0, reverse=False, verbose = False):
     orientation = tracker.get_orientation()
     print("{} X: {:.1f} mm, Y: {:.1f} mm, Heading: {:.2f} deg".format(tracker.name, orientation.x, orientation.y, orientation.heading))
     if verbose:
-        origin_distance, origin_heading = tracker.trajectory_to_point(x, y)
+        origin_distance, origin_heading = tracker.trajectory_to_point(x, y, reverse=reverse)
         back_x, back_y = tracker.point_on_robot(-160.0, -7.5 * 25.4)
         print(" - To Point: Distance: {:.1f} mm, Heading: {:.2f} deg".format(origin_distance, origin_heading))
         print(" - Back X: {:.1f} mm, Back Y: {:.1f} mm".format(back_x, back_y))
