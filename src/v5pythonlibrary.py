@@ -4,3 +4,5 @@ from driveproxy import DriveProxy
 from tracker import Tracking
 from smartdrvwrapper import SmartDriveWrapper
 from drivercontrol import DriverControl
+from autonhelpers import *
+from motormonitor import MotorMonitor

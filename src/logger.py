@@ -213,6 +213,29 @@ class Logger:
             self.enabled = False
             self.auto_dump = dump
 
+    def print(self, rate: int = 100):
+        '''
+        ### Print logged data to the Brain screen
+
+        :param rate: Rate in milliseconds to print each row of data
+        :type rate: int
+        '''
+        print("Logger: Printing logged data")
+        for i in range(self.index):
+            line = ""
+            for j in range(self.cols):
+                val = self.vdata[i * self.cols + j]
+                time = self.tdata[i * self.cols + j]
+                line += "{:.2f}, {}, ".format(val, time)
+            if self.dfcols > 0:
+                for k in range(self.dfcols):
+                    dfval = self.dfdata[i * self.dfcols + k]
+                    line += "{:.2f}".format(dfval)
+                    if k < self.dfcols - 1:
+                        line += ", "
+            print(line)
+            wait(rate, MSEC)
+
     def _avg_motor_times(self, mg: MotorGroup):
         '''
         ### INTERNAL Docstring for avg_motor_times

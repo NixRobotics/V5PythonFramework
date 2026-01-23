@@ -1,5 +1,9 @@
 from vex import *
 
+# ------------------------------------------------------------------------------ #
+# InertialWrapper class
+# ------------------------------------------------------------------------------ #
+
 class InertialWrapper(Inertial):
     '''
     ### Wraps the Inertial class to add scaling correction
@@ -121,7 +125,11 @@ class InertialWrapper(Inertial):
             Sensor rotation reading at that heading
         '''
         return 0.0
-    
+
+# ------------------------------------------------------------------------------ #
+# Tracking class
+# ------------------------------------------------------------------------------ #
+
 from collections import namedtuple
 
 class Tracking:
@@ -302,6 +310,10 @@ class Tracking:
         
         '''
         pass
+
+# ------------------------------------------------------------------------------ #
+# SmartDriveWrapper class
+# ------------------------------------------------------------------------------ #
 
 class SmartDriveWrapper(SmartDrive):
     '''
@@ -733,6 +745,10 @@ class SmartDriveWrapper(SmartDrive):
         '''
         pass
 
+# ------------------------------------------------------------------------------ #
+# DriverControl class
+# ------------------------------------------------------------------------------ #
+
 class DriverControl:
     '''
     ### DriverControl class
@@ -818,6 +834,10 @@ class DriverControl:
         :returns: No return value
         '''
         pass
+
+# ------------------------------------------------------------------------------ #
+# Logger class
+# ------------------------------------------------------------------------------ #
 
 class Logger:
 
@@ -954,5 +974,82 @@ class Logger:
 
         :param dump: If True, will dump the logged data to the SD card
         :type dump: bool
+        '''
+        pass
+
+# ------------------------------------------------------------------------------ #
+# PreAutonUI class
+# ------------------------------------------------------------------------------ #
+
+class AllianceColor():
+    RED = 0
+    BLUE = 1
+
+class AutonSequence():
+    SKILLS = 0
+    MATCH_LEFT = 1
+    MATCH_NONE = 2
+    MATCH_RIGHT = 3
+
+class PreAutonUI():
+    def __init__(self, brain: Brain, ALLIANCE_COLOR = AllianceColor.RED, AUTON_SEQUENCE = AutonSequence.SKILLS):
+        '''
+        Docstring for __init__
+        
+        :param brain: Description
+        :param ALLIANCE_COLOR: Description
+        :param AUTON_SEQUENCE: Description
+        '''
+        pass
+
+    def start(self):
+        '''
+        Docstring for start
+        '''
+        pass
+
+    def get_current_selection(self) -> tuple:
+        '''
+        Docstring for get_current_selection
+        
+        :return: Description
+        :rtype: tuple
+        '''
+        return (AllianceColor.RED, AutonSequence.SKILLS)
+    
+    def stop(self):
+        '''
+        Docstring for stop
+        '''
+        pass
+
+# ------------------------------------------------------------------------------ #
+# MotorMonitor class
+# ------------------------------------------------------------------------------ #
+
+class MotorMonitor:
+
+    def __init__(self, brain: Brain, allmotors: List[Motor], motor_names: List[str]):
+        '''
+        Docstring for __init__
+        
+        :param brain: Description
+        :type brain: Brain
+        :param allmotors: Description
+        :type allmotors: List[Motor]
+        :param motor_names: Description
+        :type motor_names: List[str]
+        '''
+        pass
+
+    def start(self):
+        '''
+        Docstring for start
+        '''
+        pass
+
+    def refresh(self):
+        '''
+        Docstring for refresh
         '''
         pass
