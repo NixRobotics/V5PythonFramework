@@ -436,7 +436,7 @@ class SmartDriveWrapper(SmartDrive):
         '''
         pass
 
-    def set_headling_lock_constants(self, Kp, Ki=0.0, Kd=0.0):
+    def set_heading_lock_constants(self, Kp, Ki=0.0, Kd=0.0):
         '''
         ### Set the constants used for driving straight, or heading lock/hold
 
@@ -678,7 +678,7 @@ class SmartDriveWrapper(SmartDrive):
         '''
         pass
 
-    def set_drive_accleration(self, accel, units:VelocityPercentUnits = VelocityUnits.PERCENT):
+    def set_drive_acceleration(self, accel, units:VelocityPercentUnits = VelocityUnits.PERCENT):
         '''
         ### Set default acceleration for drive commands
 

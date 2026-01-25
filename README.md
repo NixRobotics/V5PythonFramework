@@ -4,22 +4,70 @@ WIP
 
 # Instructions:
 
-Place following files on SDCard (local edits in VSCode will not be reflected)
+Place following files on SDCard (local edits in VSCode will not be reflected):
 - driveproxy.py
 - inertialwrapper.py
 - pid.py
 - tracker.py
 - smrtdriverwrapper.py
 
+Optionally also copy the following files to the SDCard for additional functionality:
+- autonhelpers.py
+- drivercontrol.py
+- logger.py
+- motormonitor.py
+
+Note that for the demo main.py included with this library, all the above files need to be present
+on the SDCard.
+
 main.py will be downloaded as usual.
+
+# Including In Your Own Program
+
+The only file you need to include in your project is the stubs/v5pythonlibrary.py. This basically provides the
+equivalent of a header file to keep the python parser happy.
+
+Starting a new project is similar to the basic VEX flow in Visiual Studio Code (VSCode). In the GUI navigate to the
+"New Project" menu under the VEX extension, select VRC V5 and then Python. Best is always to create a new Competition Template.
+This will create the required files such as the vex_project_settings.json and main.py. Up to now this is just the same
+as creating any new V5 project in VSCode.
+
+To include the library, you only need to do two things:
+1. Copy the stubs/v5pythonlibrary.py file to the same directory as your main.py (do not copy the src/v5pythonlibrary.py file!)
+2. Under the first line in main.py that should read "from vex import *" add the line "from v5pythonlibrary import *"
+
+The first thing to try then is to use InertialWrapper instead of Inertial for the Inertial Sensor and SmartDriveWrapper
+instead of SmartDrive for the drive train, e.g.:
+
+from vex import *
+from v5pythonlibrary import *
+
+l1 = Motor(Ports.PORT1)
+l2 = Motor(Ports.PORT2)
+r1 = Motor(Ports.PORT3)
+r2 = Motor(Ports.PORT4)
+left_drive = MotorGroup(l1, l2)
+right_drive = MotorGroup(r1, r2)
+
+gyro_scale = 1.01 # will vary with each sensor
+inertial = InertialWrapper(Ports.PORT5, gyro_scale)
+
+dt = SmartDriveWrapper(left_drive, right_drive, inertial, etc.)
+...
+
+dt at this point should behave more or less the same as if SmartDrive() had been used directly, at least for the
+turn_for() and drive_for() calls. The caveat is that the PID tuning parameters will be different and may need to
+be adjusted. If you only want to adjust the proportional gain dt.set_drive_constant() and dt.set_turn_constant()
+can be used.
 
 # Caveats
 
 Only provides basic turn_for and drive_for functionality. drive_for with heading specified will enable heading
 lock, however only works reliably if robot is already pointing in more or less the right direcion. Erratic motion
-will result if robot is too far off heading (drive speed limiting based on heading error is not implemented).
+may result if robot is too far off heading.
 
-Does not do perform any boomerang, look-ahead or pure-pursuit drive algorithms.
+Does not do perform any drive to target pose algorithms such as boomerang, look-ahead or pure-pursuit. Although it
+does have drive_to_point() functionality with fast exit once the perpendicular line to the target point as been crossed.
 
 # Tracking Basics
 
@@ -30,11 +78,11 @@ This example does not implement this scheme directly, particularly the local to 
 What is not discussed adequately here is the type of motion that can be tracked. Using two tracking wheels (i.e.
 for forward and strafe/sideways) assumes that the robot turns are centered around its pivot point (point around which
 the robot turns when turning in place). This is not the geometric center of the robot and not necessarily the geometric
-center of the drivetrain wheels. When using traction wheels it will tend to be towards these.
+center of the drivetrain wheels. When using traction wheels it will tend to be towards the center of these.
 
 However, the pivot point will depend on the center of gravity (CoG) and the rotation speed. E.g. a robot with an
 off center CoG will likely rotate around a point towards the geometric center of the drivetrain wheels when turning
-slowing. As turn speed increases the pivot point will move towards the CoG. As the pivot point moves, the tracking
+slowly. As turn speed increases the pivot point will move towards the CoG. As the pivot point moves, the tracking
 wheel offsets would need to be updated to correctly track the motion, but of course we don't have the ability to
 detect this.
 
@@ -119,3 +167,22 @@ InertialWrapper can used with VEX SmartDrive as well, e.g
 inertrial = InertialWrapper(port_number, gyro_scale)
 dt = SmartDrive(left, right, inertial, ...)
 heading = dt.heading() # heading will be provided by the override in InertialWrapper
+
+# Class Library Overviews
+
+Tracking, SmartDriveWrapper and InertialWrapper should be the most commonly used classes from this library. The
+rough hierarchy for each is shown below
+
+InertialWrapper
+-> Inertial
+
+SmartDriveWrapper
+-> SmartDrive
+    -> DriveProxy
+        -> PID
+
+Tracking
+
+Note that for SmartDrive, almost none of the base functionality is actually used. Most calls are routed directly to
+DriveProxy, so SmartDrive really just acts as a small shim layer to allow for easy migration of programs
+
