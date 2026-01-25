@@ -27,7 +27,7 @@ main.py will be downloaded as usual.
 The only file you need to include in your project is the stubs/v5pythonlibrary.py. This basically provides the
 equivalent of a header file to keep the python parser happy.
 
-Starting a new project is similar to the basic VEX flow in Visiual Studio Code (VSCode). In the GUI navigate to the
+Starting a new project is similar to the basic VEX flow in Visual Studio Code (VSCode). In the GUI navigate to the
 "New Project" menu under the VEX extension, select VRC V5 and then Python. Best is always to create a new Competition Template.
 This will create the required files such as the vex_project_settings.json and main.py. Up to now this is just the same
 as creating any new V5 project in VSCode.
@@ -64,12 +64,25 @@ can be used.
 
 # Caveats
 
-Only provides basic turn_for and drive_for functionality. drive_for with heading specified will enable heading
+Only provides turn_for and drive_for functionality. drive_for with a heading specified will enable heading
 lock, however only works reliably if robot is already pointing in more or less the right direcion. Erratic motion
 may result if robot is too far off heading.
 
-Does not do perform any drive to target pose algorithms such as boomerang, look-ahead or pure-pursuit. Although it
+Does not perform any-drive-to-target-pose algorithms such as boomerang, look-ahead or pure-pursuit. Although it
 does have drive_to_point() functionality with fast exit once the perpendicular line to the target point as been crossed.
+
+For now the main limitations when compared to SmartDrive and Inertial classes directly are:
+- Only DEGRESS is supported for heading
+- Only MM is supported for distance
+- Motors are commanded in VOLT. Therefore, the velocity provided to calls such as SmartDrive.set_turn_velocity() will first be converted from
+  PERCENT to VOLT
+- Not all parameters passed into function calls are used, e.g. specifying a velocity to SmartDrive.drive_for() will result in an exception
+
+# Getting Started
+
+The most important steps to take before developing any code are:
+- Tune the turning PID by specifying the parameters to SmartDrive.set_turn_constants(Kp, Ki, Kd). Ideally turns will 
+- Once the robot turns 
 
 # Tracking Basics
 
