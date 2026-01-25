@@ -2,9 +2,11 @@
 
 WIP
 
+This is meant to provide a Python alternative to C++ frameworks such as JAR-Template for teams where C++ is out of reach
+
 # Instructions:
 
-Place following files on SDCard (local edits in VSCode will not be reflected):
+Copy the following files onto a SDCard inserted into the Brain:
 - driveproxy.py
 - inertialwrapper.py
 - pid.py
@@ -20,7 +22,7 @@ Optionally also copy the following files to the SDCard for additional functional
 Note that for the demo main.py included with this library, all the above files need to be present
 on the SDCard.
 
-main.py will be downloaded as usual.
+main.py can be downloaded as usual from the VSCode GUI.
 
 # Including In Your Own Program
 
@@ -34,7 +36,7 @@ as creating any new V5 project in VSCode.
 
 To include the library, you only need to do two things:
 1. Copy the stubs/v5pythonlibrary.py file to the same directory as your main.py (do not copy the src/v5pythonlibrary.py file!)
-2. Under the first line in main.py that should read "from vex import *" add the line "from v5pythonlibrary import *"
+2. Under the first line in main.py (that should read "from vex import *") add the line "from v5pythonlibrary import *"
 
 The first thing to try then is to use InertialWrapper instead of Inertial for the Inertial Sensor and SmartDriveWrapper
 instead of SmartDrive for the drive train, e.g.:
@@ -61,8 +63,7 @@ instead of SmartDrive for the drive train, e.g.:
 
 dt at this point should behave more or less the same as if SmartDrive() had been used directly, at least for the
 turn_for() and drive_for() calls. The caveat is that the PID tuning parameters will be different and may need to
-be adjusted. If you only want to adjust the proportional gain dt.set_drive_constant() and dt.set_turn_constant()
-can be used.
+be adjusted. If you only want to adjust the proportional gain use dt.set_drive_constant() and dt.set_turn_constant().
 
 # Limitations
 
@@ -99,12 +100,20 @@ For now the main limitations when directly compared to the SmartDrive and Inerti
 - No rate control is implemented on the drivetrain motors. This means that any asymmetry between left and right (due to friction) will result in
   different speeds for each side. When using heading and distance PID (as implemented in turn_for() and drive_straight_for() most of this is
   compensated for, except during larger turns the robot may undergo some x / y translation along with the rotation
+- Some calls such as SmartDrive.spin() are not supported
 
 # Getting Started
 
 The most important steps to take before developing any code are:
-- Tune the turning PID by specifying the parameters to SmartDrive.set_turn_constants(Kp, Ki, Kd). Ideally turns will 
-- Once the robot turns 
+- Tune the turning PID by specifying the parameters to SmartDrive.set_turn_constants(Kp, Ki, Kd). Ideally turns will complete reasonably fast
+  without too much oscillation around the target heading
+- Once the robot turns somewhat cleanly, determine the gyro_scale parameter used by the InertialWrapper constructor. Best way is to have the robot
+  turn 10 full revolutions, e.g. by using turn_for(RIGHT, 10 * 360). The visible angle error represents 10x the gyro_scale. Adjust the gyro_scale
+  value (up or down from 1.0) until the robot points in the expected direcltion after 10 turns. Do this for both LEFT and RIGHT turns
+- Tune the drive PID by specifying the paremters to SmartDrive.set_drive_constants(Kp, Ki, Kd). Overshooting the target during drives should be avoided
+  as this may result in hitting field elements. Healthy use of Kd may be necessary to achieve this. If the robot needs acceleration limiting, make sure
+  to set this first using SmartDrive.set_drive_acceleration() before tuning any drive PID constants
+- Determine the heading lock PID paremters. Only Kp should be necessary here and expect this to be roughly 1.5x to 2x the turning PID constants
 
 # Tracking Basics
 
