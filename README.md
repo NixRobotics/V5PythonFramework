@@ -40,21 +40,23 @@ The first thing to try then is to use InertialWrapper instead of Inertial for th
 instead of SmartDrive for the drive train, e.g.:
 
 <code>
-from vex import *
-from v5pythonlibrary import *
+  
+  from vex import *
+  from v5pythonlibrary import *
+  
+  l1 = Motor(Ports.PORT1)
+  l2 = Motor(Ports.PORT2)
+  r1 = Motor(Ports.PORT3)
+  r2 = Motor(Ports.PORT4)
+  left_drive = MotorGroup(l1, l2)
+  right_drive = MotorGroup(r1, r2)
+  
+  gyro_scale = 1.01 # will vary with each sensor
+  inertial = InertialWrapper(Ports.PORT5, gyro_scale)
+  
+  dt = SmartDriveWrapper(left_drive, right_drive, inertial, etc.)
+  ...
 
-l1 = Motor(Ports.PORT1)
-l2 = Motor(Ports.PORT2)
-r1 = Motor(Ports.PORT3)
-r2 = Motor(Ports.PORT4)
-left_drive = MotorGroup(l1, l2)
-right_drive = MotorGroup(r1, r2)
-
-gyro_scale = 1.01 # will vary with each sensor
-inertial = InertialWrapper(Ports.PORT5, gyro_scale)
-
-dt = SmartDriveWrapper(left_drive, right_drive, inertial, etc.)
-...
 </code>
 
 dt at this point should behave more or less the same as if SmartDrive() had been used directly, at least for the
@@ -62,21 +64,41 @@ turn_for() and drive_for() calls. The caveat is that the PID tuning parameters w
 be adjusted. If you only want to adjust the proportional gain dt.set_drive_constant() and dt.set_turn_constant()
 can be used.
 
-# Caveats
+# Limitations
 
-Only provides turn_for and drive_for functionality. drive_for with a heading specified will enable heading
-lock, however only works reliably if robot is already pointing in more or less the right direcion. Erratic motion
-may result if robot is too far off heading.
+Only provides turn_for() and drive_for()/drive_straight_for() functionality. drive_straight_for() takes a heading and will
+enable heading lock, however only works reliably if robot is already pointing in more or less the right direcion. Erratic motion
+may result if robot is too far off heading. For best accuracy, when moving from one location to another, the motion commands
+should be broken down into a turn followed by a drive (with heading provided), e.g.:
+
+<code>
+
+  target_distance = 1000 # mm
+  target_heading = 175 # deg
+  dt.turn_to_heading(target_heading)
+  dt.drive_straight_for(FORWARD, target_distance, heading=target_heading)
+
+</code>
 
 Does not perform any-drive-to-target-pose algorithms such as boomerang, look-ahead or pure-pursuit. Although it
-does have drive_to_point() functionality with fast exit once the perpendicular line to the target point as been crossed.
+does have drive_to_point() functionality with fast exit once the perpendicular line to the target point as been crossed, e.g.
 
-For now the main limitations when compared to SmartDrive and Inertial classes directly are:
+<code>
+
+  target_x = target_y = 100
+  dt.drive_to_point(x, y, FORWARD, position_callback) # position_callback() provides the current x / y of the robot (from tracking)
+
+</code>
+
+For now the main limitations when directly compared to the SmartDrive and Inertial classes are:
 - Only DEGRESS is supported for heading
 - Only MM is supported for distance
 - Motors are commanded in VOLT. Therefore, the velocity provided to calls such as SmartDrive.set_turn_velocity() will first be converted from
-  PERCENT to VOLT
+  PERCENT to VOLT. Reading back a motor velocity may therefore not correlate exactly
 - Not all parameters passed into function calls are used, e.g. specifying a velocity to SmartDrive.drive_for() will result in an exception
+- No rate control is implemented on the drivetrain motors. This means that any asymmetry between left and right (due to friction) will result in
+  different speeds for each side. When using heading and distance PID (as implemented in turn_for() and drive_straight_for() most of this is
+  compensated for, except during larger turns the robot may undergo some x / y translation along with the rotation
 
 # Getting Started
 
