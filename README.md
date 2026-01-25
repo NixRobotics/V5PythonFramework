@@ -274,8 +274,37 @@ Knowing the max linear speed for the robot (e.g. 1m/s), would mean a 1m drive sh
 - time = dist / speed + delta, or 1sec + delta, where delta allows for acceleration / deceleration
 Setting delta to 1sec is a reasonable starting point.
 
-With the above prep work done, you can start taking some tentative steps to tuning. Start with larger motions, e.g. drive for 1m and turns for 180deg. These will
-be harder to stop given momentum / inertia of the robot.
+With the above prep work done, you can start taking some tentative steps to tuning. See SmartDriveWrapper.set_drive_constants() and set_turn_constants()
+
+Start with larger motions, e.g. drive for 1m and turns for 180deg. These will be harder to stop given momentum / inertia of the robot. Do not complete
+tuning with large motions alone though, you will want a test program that progressively cycles through different drive distances and turn angles,
+e.g. 10 steps up to 1m and 10 steps up to 180deg (longer turns and drives are not yielding any additional useful tuning conditions).
+
+The reason for having a range of motions coverered is that for larger motions the proportional term (Kp) will dominate, whereas for short ones the integral term (Ki)
+will dominate.
+
+At a worst case, gain scheduling may be required or even desired, although this is not as scary as it sounds. If you determine you need a different set of
+parameters for fast and / or long motions, and a different set for slow and / or short motions you can do two or more sets of tuning parameters and select
+between them depending on conditions.
+
+## Tuning - Finally
+
+Disable any timeouts (or set to 10 or more seconds).
+
+Start with the proportional gain (Kp). Increase this to a point where the robot just starts to oscillate continuously around the target.
+
+You can now either see if adding Kd (ie a PD controller) will produce reasonable results, which it most likely will for larger motions.
+
+If shorter motions do not complete in a reasonable amount of time do this instead before programming Kd:
+- Reduce the Kp by half
+- Increase the Ki until there is just a small oscillation around the target
+- Increase Kd to reduce the oscillation
+
+Now add the timeouts and start testing with a larger range of motions.
+
+Rinse and repeat.
+
+Good Luck!
 
 # API REFERENCE
 
