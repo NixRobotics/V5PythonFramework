@@ -39,6 +39,7 @@ To include the library, you only need to do two things:
 The first thing to try then is to use InertialWrapper instead of Inertial for the Inertial Sensor and SmartDriveWrapper
 instead of SmartDrive for the drive train, e.g.:
 
+<code>
 from vex import *
 from v5pythonlibrary import *
 
@@ -54,6 +55,7 @@ inertial = InertialWrapper(Ports.PORT5, gyro_scale)
 
 dt = SmartDriveWrapper(left_drive, right_drive, inertial, etc.)
 ...
+</code>
 
 dt at this point should behave more or less the same as if SmartDrive() had been used directly, at least for the
 turn_for() and drive_for() calls. The caveat is that the PID tuning parameters will be different and may need to
