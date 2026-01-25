@@ -4,6 +4,24 @@ WIP
 
 This is meant to provide a Python alternative to C++ frameworks such as JAR-Template for teams where C++ is out of reach
 
+# Class Library Overviews
+
+Tracking, SmartDriveWrapper and InertialWrapper should be the most commonly used classes from this library. The
+rough hierarchy for each is shown below
+
+InertialWrapper
+-> Inertial
+
+SmartDriveWrapper
+-> SmartDrive
+    -> DriveProxy
+        -> PID
+
+Tracking
+
+Note that for SmartDrive, almost none of the base functionality is actually used. Most calls are routed directly to
+DriveProxy, so SmartDrive really just acts as a small shim layer to allow for easy migration of programs
+
 # Instructions:
 
 Copy the following files onto a SDCard inserted into the Brain:
@@ -102,6 +120,9 @@ For now the main limitations when directly compared to the SmartDrive and Inerti
   compensated for, except during larger turns the robot may undergo some x / y translation along with the rotation
 - Some calls such as SmartDrive.spin() are not supported
 
+Currently there is no support for Holonomic drivetrains (Mecanum, H-drive, X-drive, etc.). Also no support for motor sharing techniques such as
+"power take off".
+
 # Getting Started
 
 The most important steps to take before developing any code are:
@@ -114,6 +135,11 @@ The most important steps to take before developing any code are:
   as this may result in hitting field elements. Healthy use of Kd may be necessary to achieve this. If the robot needs acceleration limiting, make sure
   to set this first using SmartDrive.set_drive_acceleration() before tuning any drive PID constants
 - Determine the heading lock PID paremters. Only Kp should be necessary here and expect this to be roughly 1.5x to 2x the turning PID constants
+- Once the robot can turn and drive reasonably well, now would be a good time to properly calibrate the wheel sizes for the drivetrain and tracking wheels
+  (if used). To calibrate wheel sizes have the robot drive the length of the field, or at least by using visual cues such the joints between field tiles.
+  If using the field tiles as a reference make sure to properly measure the tiles. When placed side by side, an individual tile will be around 601mm to 602mm.
+  Setting this to 600 will work, but it means wheels will of course measure slightly smaller. This is OK, just make sure everything is self consistent with this
+  assumption.
 
 # Tracking Basics
 
@@ -136,6 +162,33 @@ The other implication of this is that we can not track motion that intentionally
 manually rotating the robot around its back left corner. This is the kind of motion that would occur when the robot
 is blocked against a field element or the field perimeter. These kind of interations change the center of rotation
 enough that the assumptions behind the tracking equations are incorect.
+
+# Coordinate System
+
+The tracker uses the North-East-Down (NED) convention. Down (ZAXIS) is of course not used here.
+- Positive X represents NORTH
+- Positive Y represents EAST
+- Heading follows the compass points:
+  - 0 deg heading is NORTH
+  - 90 deg heading is EAST
+  - 180 deg heading is SOUTH
+  - 270 deg heading is WEST
+
+Similarly for robot local coordinates
+- Positive X is FORWARD
+- Positive Y is RIGHT
+- Rotation (or theta when using radians) is clockwise referenced to FORWARD
+- Note that robot local coordinates are not visible at the API level and are just used internally
+
+The justification for using NED is that trigonometric relationships work the same way as when using cartesion coordinates so
+that formula need not be re-derived. For example, when calculating the distance and angle between two points in cartesion
+coordinates the following formula are used:
+- distance = sqrt(diff_x ^ 2 + diff_y ^2), where diff_x is difference in Xs and diff_y is difference in Ys
+- angle = arctan(diff_y / diff_x)
+Using NED, exactly the same formula are used as the X and Y axis have the same relationship to how the angle is defined.
+
+Conversely mapping a NORTH-EAST based real world application to X representing EAST and Y representing NORTH would require messy
+handling of the robot heading as in cartesion coordinates the angle is now anti-clockwise from X.
 
 # Calibration
 
@@ -189,7 +242,44 @@ reported revolutions and distance. Be careful to take any hysteris into account,
 target, but can be pushed to target without feeling motors - you will have this amount of uncertainty in your
 wheel travel. Make sure to perform multiple experiments both backwards and forwards and average.
 
-# InertialWrapper Class
+# PID Tuning
+
+For more background, see this article:
+https://en.wikipedia.org/wiki/Proportional%E2%80%93integral%E2%80%93derivative_controller
+
+It is not possible to give a complete guide to PID tuning so this section only presents a basic strategy that
+works reasonably well for this application.
+
+Tuning is ideally done at FULL SPEED for both drives and turns. The drivetrain will behave reasonbly well at slower
+speeds when tuned at faster speeds, but not vice versa. See SmartDriveWrapper.set_drive_velocity() and set_turn_velocity()
+
+Also set any acceleration limits BEFORE tuning any of the PID constants. See SmartDriveWrapper.set_drive_acceleration(). You may need
+to fully retune the PID parameters if the acceleration limit is changed!
+
+Determine the most common accuracy needed for drives and turns, but be realistic. Being too constrained (accurate) will make tuning
+very hard and will require longer settling times (time before the PID controller reaches desired accuracy). Having turns accurate
+to +/-0.5deg and drives accurate to +/-5mm should achieve good results particularly when heading hold is used for driving and the robot
+position is being tracked, as any errors in one move automatically gets compensated for in the next. See SmartDriveWrapper.set_drive_threshold()
+and set_turn_threadhold()
+
+Set TIMEOUTS before each drive and turn! See SmartDriveWrapper.set_timeout()
+
+You want the PID controllers to settle (achieve desired accuracy) before a resonable timeout occurs. For example setting a turn timeout to
+10 seconds will probably result in you tuning your turns to finish in 9 seconds. In reality most turns during autonomous will be limited to
++/-180deg, for which the most common drivetrain configurations used should take much less than a second, particularly at full speed.
+Therefore using 1 second as a turn timeout is a reasonabe starting point.
+
+Similarly for drives, you can calculate the rough time needed based on the maximum drive speed programmed plus some extra for acceleration / deceleration.
+Knowing the max linear speed for the robot (e.g. 1m/s), would mean a 1m drive should take
+- time = dist / speed + delta, or 1sec + delta, where delta allows for acceleration / deceleration
+Setting delta to 1sec is a reasonable starting point.
+
+With the above prep work done, you can start taking some tentative steps to tuning. Start with larger motions, e.g. drive for 1m and turns for 180deg. These will
+be harder to stop given momentum / inertia of the robot.
+
+# API REFERENCE
+
+## InertialWrapper Class
 
 This provides an overload for the rotation(), heading() and angle() inertial sensor calls as well as some of the
 setter functions.
@@ -214,21 +304,11 @@ inertrial = InertialWrapper(port_number, gyro_scale)
 dt = SmartDrive(left, right, inertial, ...)
 heading = dt.heading() # heading will be provided by the override in InertialWrapper
 
-# Class Library Overviews
+## SnartDriveWrapper Class
 
-Tracking, SmartDriveWrapper and InertialWrapper should be the most commonly used classes from this library. The
-rough hierarchy for each is shown below
+...
 
-InertialWrapper
--> Inertial
+## Tracker Class
 
-SmartDriveWrapper
--> SmartDrive
-    -> DriveProxy
-        -> PID
-
-Tracking
-
-Note that for SmartDrive, almost none of the base functionality is actually used. Most calls are routed directly to
-DriveProxy, so SmartDrive really just acts as a small shim layer to allow for easy migration of programs
+...
 
