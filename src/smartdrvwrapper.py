@@ -42,6 +42,19 @@ class SmartDriveWrapper(SmartDrive):
     :param (optional) externalGearRatio: Gear ratio used to compensate drive distances if gearing is used
     :returns out: A new SmartDriveWrapper object
     '''
+
+    class TurnMode:
+        '''
+        ### TurnMode Enum for overriding default turn control mode on a turn by turn basis
+
+        VOLTAGE (default) will command motors using VOLTAGE. 
+        PERCENT will command motors using PERCENT.
+        SMART will use the base SmartDrive.turn_for() method (current not implemented)
+        '''
+        VOLTAGE = 0, # uses voltage control
+        PERCENT = 1, # uses percent control
+        SMART = 3 # uses base SmartDrive.turn_for()
+
     def __init__(self,
                  lm: MotorGroup,
                  rm: MotorGroup,
@@ -70,10 +83,16 @@ class SmartDriveWrapper(SmartDrive):
         self.dp.set_turn_velocity(self._drive_velocity, PERCENT)
         self.dp.set_drive_velocity(self._drive_velocity, PERCENT)
         self.dp.set_drive_acceleration(10, PERCENT) # 5% per timestep
+        self.dp.set_timeout(10) # seconds
+        self.dp.set_stopping(BrakeType.COAST)
 
         super().__init__(lm, rm, g, wheelTravel, trackWidth, wheelBase, units, externalGearRatio)
         super().set_turn_velocity(self._drive_velocity, PERCENT)
         super().set_drive_velocity(self._drive_velocity, PERCENT)
+        super().set_timeout(10, SECONDS)
+        super().set_turn_constant(1.0)
+        super().set_turn_threshold(0.5)
+        super().set_stopping(BrakeType.COAST)
 
     def set_turn_threshold(self, value):
         '''
@@ -115,6 +134,7 @@ class SmartDriveWrapper(SmartDrive):
         ### DEPRECATED: Use set_turn_constants()
         '''
         self.set_turn_constants(Kp=Kp)
+        super().set_turn_constant(Kp)
 
     def set_drive_threshold(self, value):
         '''
@@ -232,7 +252,7 @@ class SmartDriveWrapper(SmartDrive):
 
     def turn_to_heading(self, heading, units=RotationUnits.DEG,
                         velocity=None, units_v:VelocityUnits.VelocityUnits | PercentUnits.PercentUnits = VelocityUnits.PERCENT,
-                        wait=True):
+                        wait=True, mode=TurnMode.VOLTAGE):
         '''
         ### turn the robot to an absolute heading
 
@@ -244,22 +264,33 @@ class SmartDriveWrapper(SmartDrive):
         :param (optional) velocity: spin the motor using this velocity, the default velocity set by set_velocity will be used if not provided.
         :param (optional) units_v: The units of the provided velocity (PERCENT only)
         :param (optional) wait: This indicates if the function should wait for the command to complete or return immediately, default is True.
+        :param (optional) mode: TurnMode to use VOLTAGE, PERCENT or SMART (default is VOLTAGE)
         :returns time_taken: Returns the time taken in MS (if wait=True), else returns 0
         '''
-        if units != RotationUnits.DEG:
-            raise ValueError("SmartDriveWrapper.turn_to_heading(): Only DEGREES supported for units")
-        if units_v != PercentUnits.PERCENT and units_v != VelocityUnits.PERCENT:
-            raise ValueError("SmartDriveWrapper.turn_to_heading(): Only PERCENT supported for units_v")
-
-        if velocity is not None:
-            self.dp.set_turn_velocity(velocity, units_v)
+        if mode == self.TurnMode.SMART:
+            if not wait:
+                raise NotImplementedError("SmartDriveWrapper.turn_for(): SMART mode not implemented for wait=False")
+            timer = Timer()
+            start_time = timer.time(MSEC)
+            result = super().turn_to_heading(heading, units, velocity, units_v, wait)
+            turn_time = timer.time(MSEC) - start_time
+            print("Done Turn: {} {}".format(turn_time, result))
+            return turn_time
         else:
-            self.dp.set_turn_velocity(self._turn_velocity, PercentUnits.PERCENT)
-        return self.dp.turn_to_heading(heading, settle_error=None, timeout=None, wait=wait)
-        # return super().turn_to_heading(heading, units, velocity, units_v, wait)
+            if units != RotationUnits.DEG:
+                raise ValueError("SmartDriveWrapper.turn_to_heading(): Only DEGREES supported for units")
+            if units_v != PercentUnits.PERCENT and units_v != VelocityUnits.PERCENT:
+                raise ValueError("SmartDriveWrapper.turn_to_heading(): Only PERCENT supported for units_v")
 
+            if velocity is not None:
+                self.dp.set_turn_velocity(velocity, units_v)
+            else:
+                self.dp.set_turn_velocity(self._turn_velocity, PercentUnits.PERCENT)
+            return self.dp.turn_to_heading(heading, settle_error=None, timeout=None, wait=wait, use_voltage=(mode==self.TurnMode.VOLTAGE))
+    
     def turn_to_rotation(self, rotation, units=RotationUnits.DEG,
-                         velocity=None, units_v:  VelocityUnits.VelocityUnits | PercentUnits.PercentUnits = VelocityUnits.PERCENT, wait=True):
+                         velocity=None, units_v:  VelocityUnits.VelocityUnits | PercentUnits.PercentUnits = VelocityUnits.PERCENT,
+                         wait=True, mode=TurnMode.VOLTAGE):
         '''
         ### turn the robot to an absolute rotation
 
@@ -272,21 +303,33 @@ class SmartDriveWrapper(SmartDrive):
         :param (optional) velocity: spin the motor using this velocity, the default velocity set by set_velocity will be used if not provided.
         :param (optional) units_v: The units of the provided velocity (PERCENT only)
         :param (optional) wait: This indicates if the function should wait for the command to complete or return immediately, default is True.
+        :param (optional) mode: TurnMode to use VOLTAGE, PERCENT or SMART (default is VOLTAGE)
         :returns time_taken: Returns the time taken in MS (if wait=True), else returns 0
         '''
-        if units != RotationUnits.DEG:
-            raise ValueError("SmartDriveWrapper.turn_to_heading(): Only DEGREES supported for units")
-        if units_v != PercentUnits.PERCENT and units_v != VelocityUnits.PERCENT:
-            raise ValueError("SmartDriveWrapper.turn_to_heading(): Only PERCENT supported for units_v")
-
-        if velocity is not None:
-            self.dp.set_turn_velocity(velocity, units_v)
+        if mode == self.TurnMode.SMART:
+            if not wait:
+                raise NotImplementedError("SmartDriveWrapper.turn_for(): SMART mode not implemented for wait=False")
+            timer = Timer()
+            start_time = timer.time(MSEC)
+            result = super().turn_to_rotation(rotation, units, velocity, units_v, wait)
+            turn_time = timer.time(MSEC) - start_time
+            print("Done Turn: {} {}".format(turn_time, result))
+            return turn_time
         else:
-            self.dp.set_turn_velocity(self._turn_velocity, PercentUnits.PERCENT)
-        return self.dp.turn_to_rotation(rotation, settle_error=None, timeout=None, wait=wait)
+            if units != RotationUnits.DEG:
+                raise ValueError("SmartDriveWrapper.turn_to_heading(): Only DEGREES supported for units")
+            if units_v != PercentUnits.PERCENT and units_v != VelocityUnits.PERCENT:
+                raise ValueError("SmartDriveWrapper.turn_to_heading(): Only PERCENT supported for units_v")
+
+            if velocity is not None:
+                self.dp.set_turn_velocity(velocity, units_v)
+            else:
+                self.dp.set_turn_velocity(self._turn_velocity, PercentUnits.PERCENT)
+            return self.dp.turn_to_rotation(rotation, settle_error=None, timeout=None, wait=wait, use_voltage=(mode==self.TurnMode.VOLTAGE))
 
     def turn_for(self, direction, angle, units = RotationUnits.DEG,
-                 velocity=None, units_v: VelocityUnits.VelocityUnits | PercentUnits.PercentUnits = VelocityUnits.PERCENT, wait=True):
+                 velocity=None, units_v: VelocityUnits.VelocityUnits | PercentUnits.PercentUnits = VelocityUnits.PERCENT,
+                 wait=True, mode=TurnMode.VOLTAGE):
         '''
         ### Turn the robot for an angle left or right
 
@@ -299,26 +342,36 @@ class SmartDriveWrapper(SmartDrive):
         :param (optional) velocity: drive using this velocity, the default velocity set by set_drive_velocity will be used if not provided.
         :parm (optional) units_v: The units of the provided velocity (PERCENT only)
         :param (optional) wait: This indicates if the function should wait for the command to complete or return immediately, default is True.
+        :param (optional) mode: TurnMode to use VOLTAGE, PERCENT or SMART (default is VOLTAGE)
         :returns time_taken: Returns the time taken in MS (if wait=True), else returns 0
         '''
-        if units != RotationUnits.DEG:
-            raise ValueError("SmartDriveWrapper.turn_to_heading(): Only DEGREES supported for units")
-        if units_v != PercentUnits.PERCENT and units_v != VelocityUnits.PERCENT:
-            raise ValueError("SmartDriveWrapper.turn_to_heading(): Only PERCENT supported for units_v")
-
-        if velocity is not None:
-            self.dp.set_turn_velocity(velocity, units_v)
+        if mode == self.TurnMode.SMART:
+            if not wait:
+                raise NotImplementedError("SmartDriveWrapper.turn_for(): SMART mode not implemented for wait=False")
+            timer = Timer()
+            start_time = timer.time(MSEC)
+            result = super().turn_for(direction, angle, units, velocity, units_v, wait)
+            turn_time = timer.time(MSEC) - start_time
+            print("Done Turn: {} {}".format(turn_time, result))
+            return turn_time
         else:
-            self.dp.set_turn_velocity(self._turn_velocity, PercentUnits.PERCENT)
-        return self.dp.turn_for(direction, angle, units, settle_error=None, timeout=None, wait=wait)
-    
-        # return super().turn_for(direction, angle, units, velocity, units_v, wait)
+            if units != RotationUnits.DEG:
+                raise ValueError("SmartDriveWrapper.turn_to_heading(): Only DEGREES supported for units")
+            if units_v != PercentUnits.PERCENT and units_v != VelocityUnits.PERCENT:
+                raise ValueError("SmartDriveWrapper.turn_to_heading(): Only PERCENT supported for units_v")
+
+            if velocity is not None:
+                self.dp.set_turn_velocity(velocity, units_v)
+            else:
+                self.dp.set_turn_velocity(self._turn_velocity, PercentUnits.PERCENT)
+            return self.dp.turn_for(direction, angle, units, settle_error=None, timeout=None, wait=wait, use_voltage=(mode==self.TurnMode.VOLTAGE))
 
     def turn(self, direction, velocity=None, units:VelocityPercentUnits=VelocityUnits.RPM):
         '''
         ### NOT SUPPORTED
         '''
-        raise NotImplementedError("turn() not supported")
+        # raise NotImplementedError("turn() not supported")
+        return super().turn(direction, velocity, units)
 
     def drive_for(self, direction, distance, units = DistanceUnits.MM,
                   velocity=None, units_v: VelocityUnits.VelocityUnits | PercentUnits.PercentUnits = VelocityUnits.PERCENT,
@@ -405,13 +458,15 @@ class SmartDriveWrapper(SmartDrive):
         '''
         ### DEPRECATED: Use is_done()
         '''
-        return self.is_done()
+        raise NotImplementedError("is_turning() not supported")
+        # return self.is_done()
 
     def is_moving(self):
         '''
         ### DEPRECATED: Use id_done() 
         '''
-        return self.is_done()
+        raise NotImplementedError("is_moving() not supported")
+        # return self.is_done()
 
     def is_done(self):
         '''

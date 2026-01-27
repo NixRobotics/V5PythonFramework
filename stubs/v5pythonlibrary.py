@@ -352,6 +352,19 @@ class SmartDriveWrapper(SmartDrive):
     :param (optional) externalGearRatio: Gear ratio used to compensate drive distances if gearing is used
     :returns out: A new SmartDriveWrapper object
     '''
+
+    class TurnMode:
+        '''
+        ### TurnMode Enum for overriding default turn control mode on a turn by turn basis
+
+        VOLTAGE (default) will command motors using VOLTAGE. 
+        PERCENT will command motors using PERCENT.
+        SMART will use the base SmartDrive.turn_for() method (current not implemented)
+        '''
+        VOLTAGE = 0, # uses voltage control
+        PERCENT = 1, # uses percent control
+        SMART = 3 # uses base SmartDrive.turn_for()
+
     def __init__(self,
                  lm: MotorGroup,
                  rm: MotorGroup,
@@ -511,7 +524,8 @@ class SmartDriveWrapper(SmartDrive):
         pass
 
     def turn_to_heading(self, heading, units=RotationUnits.DEG,
-                        velocity=None, units_v:VelocityUnits.VelocityUnits | PercentUnits.PercentUnits = VelocityUnits.PERCENT, wait=True):
+                        velocity=None, units_v:VelocityUnits.VelocityUnits | PercentUnits.PercentUnits = VelocityUnits.PERCENT,
+                        wait=True, mode=TurnMode.VOLTAGE):
         '''
         ### turn the robot to an absolute heading
 
@@ -523,12 +537,14 @@ class SmartDriveWrapper(SmartDrive):
         :param (optional) velocity: spin the motor using this velocity, the default velocity set by set_velocity will be used if not provided.
         :param (optional) units_v: The units of the provided velocity (PERCENT only)
         :param (optional) wait: This indicates if the function should wait for the command to complete or return immediately, default is True.
+        :param (optional) mode: TurnMode to use VOLTAGE, PERCENT or SMART (default is VOLTAGE)
         :returns time_taken: Returns the time taken in MS (if wait=True), else returns 0
         '''
         return 0.0
 
     def turn_to_rotation(self, rotation, units=RotationUnits.DEG,
-                         velocity=None, units_v:  VelocityUnits.VelocityUnits | PercentUnits.PercentUnits = VelocityUnits.PERCENT, wait=True):
+                         velocity=None, units_v:  VelocityUnits.VelocityUnits | PercentUnits.PercentUnits = VelocityUnits.PERCENT,
+                         wait=True, mode=TurnMode.VOLTAGE):
         '''
         ### turn the robot to an absolute rotation
 
@@ -541,12 +557,14 @@ class SmartDriveWrapper(SmartDrive):
         :param (optional) velocity: spin the motor using this velocity, the default velocity set by set_velocity will be used if not provided.
         :param (optional) units_v: The units of the provided velocity (PERCENT only)
         :param (optional) wait: This indicates if the function should wait for the command to complete or return immediately, default is True.
+        :param (optional) mode: TurnMode to use VOLTAGE, PERCENT or SMART (default is VOLTAGE)
         :returns time_taken: Returns the time taken in MS (if wait=True), else returns 0
         '''
         return 0.0
 
     def turn_for(self, direction, angle, units = RotationUnits.DEG,
-                 velocity=None, units_v: VelocityUnits.VelocityUnits | PercentUnits.PercentUnits = VelocityUnits.PERCENT, wait=True):
+                 velocity=None, units_v: VelocityUnits.VelocityUnits | PercentUnits.PercentUnits = VelocityUnits.PERCENT,
+                 wait=True, mode=TurnMode.VOLTAGE):
         '''
         ### Turn the robot for an angle left or right
 
@@ -559,6 +577,7 @@ class SmartDriveWrapper(SmartDrive):
         :param (optional) velocity: drive using this velocity, the default velocity set by set_drive_velocity will be used if not provided.
         :parm (optional) units_v: The units of the provided velocity (PERCENT only)
         :param (optional) wait: This indicates if the function should wait for the command to complete or return immediately, default is True.
+        :param (optional) mode: TurnMode to use VOLTAGE, PERCENT or SMART (default is VOLTAGE)
         :returns time_taken: Returns the time taken in MS (if wait=True), else returns 0
         '''
         return 0.0

@@ -422,6 +422,39 @@ def calibration_tracking_wheels(dt: SmartDriveWrapper):
     # -0.06780071 , 0.2414444 , 0.8654722 , 722.9219 , 0.25 , -8.321305
     # 722.9198 , 0.25 , -8.321305 , -0.3253781 , 0.3342222 , 0.9289445
 
+def smart_turn_tests(drivetrain: SmartDriveWrapper, tracker: Tracking):
+    print("smart_turn_tests")
+    print_tracker(tracker)
+    
+    log_motors = [left_drive, right_drive]
+    # log_motors = all_motors
+    log = Logger(brain, log_motors + all_sensors, ["lmg", "rmg", "gyro", "fwd", "side"], data_headers=["x", "y"],
+                 data_fields_callback=OnLoggerDataUpdate, time_sec=20, auto_dump=True, file_name="smart_turn_tests")
+    # log.start()
+
+    turn_angles = [22.5, -22.5, 45.0, -45.0, 90.0, -90.0, 180.0, -180.0, 360.0, -360.0]
+
+    drivetrain.set_turn_velocity(100, PERCENT)
+    # drivetrain.set_turn_constants(Kp=0.5, Ki=0.04, Kd=10.0)
+    drivetrain.set_turn_constants(Kp=1.25/2.0, Ki=0.003, Kd=0.095)
+    # drivetrain.set_turn_constant(0.5)
+
+    for angle in turn_angles:
+        #print("")
+        #print("----- Start Turn", angle)
+        initial_heading = tracker.get_orientation().heading
+        target_heading = initial_heading + angle
+        #print(" Initial Heading: {:.2f} deg, Target Heading: {:.2f} deg".format(initial_heading, target_heading))
+
+        drivetrain.set_timeout(1.0 + abs(angle / 360.0), SECONDS)
+        drivetrain.turn_for(RIGHT if angle > 0 else LEFT, abs(angle), DEGREES, mode=SmartDriveWrapper.TurnMode.PERCENT)
+        drivetrain.stop(BrakeType.BRAKE)
+        wait(0.5, SECONDS)
+
+        final_heading = tracker.get_orientation().heading
+        heading_error = final_heading - target_heading
+        #print(" Final Heading: {:.2f} deg, Heading Error: {:.2f} deg".format(final_heading, heading_error))
+
 def smart_drive_tests(tracker: Tracking):
     drivetrain = SmartDriveWrapper(left_drive, right_drive, inertial, DRIVETRAIN_WHEEL_SIZE, 320, 320, MM, DRIVETRAIN_GEAR_RATIO)
 
@@ -431,10 +464,12 @@ def smart_drive_tests(tracker: Tracking):
     drivetrain.set_drive_threshold(10) # MM
     drivetrain.set_turn_velocity(75, PERCENT)
     drivetrain.set_turn_constants(Kp=1.0, Ki=0.04, Kd=10.0)
+    # drivetrain.set_turn_constants(Kp=1.25/2.0, Ki=0.003, Kd=0.095) # when using percent speed
     drivetrain.set_turn_threshold(0.5) # DEGREES
     drivetrain.set_heading_lock_constants(Kp=2.0, Ki=0.0, Kd=0.0)
 
-    smart_drive_to_points(drivetrain, tracker)
+    # smart_drive_to_points(drivetrain, tracker)
+    smart_turn_tests(drivetrain, tracker)
     
 # ------------------------------------------------------------ #
 # Auton Routines for DriveProxy DriveTrain

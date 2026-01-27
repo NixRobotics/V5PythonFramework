@@ -19,7 +19,6 @@ class DriveProxy:
 
     MAX_VOLTAGE = 11.5
     MAX_PERCENT = 100.0
-    USE_VOLTAGE = True
 
     class PIDParameters:
         def __init__(self):
@@ -48,6 +47,8 @@ class DriveProxy:
 
         self.inertial = inertial
 
+        self.use_voltage = True
+
         self.stop_mode = BrakeType.COAST
 
         self.drive_velocity = DriveProxy.MAX_PERCENT # percent
@@ -69,6 +70,20 @@ class DriveProxy:
         if self._command_running:
             raise RuntimeError("Conncurrency check: Command already running")
             # return False
+        return True
+    
+    def set_power_mode(self, use_voltage: bool):
+        '''
+        ### Sets whether to use voltage or percent for motor control
+
+        ### Arguments
+            use_voltage: True to use voltage control, False to use percent control
+
+        ### Returns
+            True if successful
+        '''
+        self._concurrency_check()
+        self.use_voltage = use_voltage
         return True
 
     def set_drive_velocity(self, velocity, unit):
@@ -222,21 +237,24 @@ class DriveProxy:
         '''
         return( (target_y-current_y) * sin(radians(target_angle)) <= -(target_x-current_x) * cos(radians(target_angle)) )
 
-    def turn_to_heading(self, heading, settle_error = None, timeout = None, wait = True):
+    def turn_to_heading(self, heading, settle_error = None, timeout = None, wait = True, use_voltage = True):
         angle = self.inertial.calc_angle_to_heading(heading)
-        return self.turn_for(RIGHT, angle, DEGREES, settle_error=settle_error, timeout=timeout, wait=wait)
+        return self.turn_for(RIGHT, angle, DEGREES, settle_error=settle_error, timeout=timeout, wait=wait, use_voltage=use_voltage)
 
-    def turn_to_rotation(self, rotation, settle_error = None, timeout = None, wait = True):
+    def turn_to_rotation(self, rotation, settle_error = None, timeout = None, wait = True, use_voltage = True):
         angle = self.inertial.calc_angle_to_rotation(rotation)
-        return self.turn_for(RIGHT, angle, DEGREES, settle_error=settle_error, timeout=timeout, wait=wait)
+        return self.turn_for(RIGHT, angle, DEGREES, settle_error=settle_error, timeout=timeout, wait=wait, use_voltage=use_voltage)
 
-    def _turn_for(self, direction, angle, unit, settle_error, timeout):
+    def _turn_for(self, direction, angle, unit, settle_error, timeout, use_voltage):
         '''
         ### INTERNAL
         '''
         if unit is not RotationUnits.DEG: raise NotImplementedError("Units must be MM")
         self._command_running = True
         timer = Timer()
+
+        if not self.use_voltage or not use_voltage:
+            use_voltage = False
 
         turn_pid = PID(self.turn_pid_constants.Kp, self.turn_pid_constants.Ki, self.turn_pid_constants.Kd)
         turn_pid.set_output_limit(self.turn_pid_constants.max_output) # limit output to defined power
@@ -254,7 +272,7 @@ class DriveProxy:
             current_rotation = self.inertial.rotation()
             pid_output = turn_pid.compute(target_rotation, current_rotation)
 
-            self._spin(pid_output, -pid_output)
+            self._spin(pid_output, -pid_output, use_voltage)
 
             loop_count += 1
             end_time = timer.time(SECONDS)
@@ -273,19 +291,19 @@ class DriveProxy:
         if (self._was_timeout): self._timeout_notifier.broadcast()
         return timer.time()
     
-    def _turn_for_thread(self, args1, arg2, arg3, arg4, arg5):
+    def _turn_for_thread(self, args1, arg2, arg3, arg4, arg5, arg6):
         '''
         ### INTERNAL
         '''
-        self._turn_for(args1, arg2, arg3, arg4, arg5)
+        self._turn_for(args1, arg2, arg3, arg4, arg5, arg6)
     
-    def turn_for(self, direction, angle, unit, settle_error = None, timeout = None, wait = True):
+    def turn_for(self, direction, angle, unit, settle_error = None, timeout = None, wait = True, use_voltage = True):
         self._concurrency_check()
         self._command_running = True
         if wait:
-            return self._turn_for(direction, angle, unit, settle_error, timeout)
+            return self._turn_for(direction, angle, unit, settle_error, timeout, use_voltage)
         else:
-            self._worker_thread = Thread(self._turn_for_thread, (direction, angle, unit, settle_error, timeout))
+            self._worker_thread = Thread(self._turn_for_thread, (direction, angle, unit, settle_error, timeout, use_voltage))
             return 0
 
     def _drive_for(self, direction, distance, unit, heading, settle_error, timeout):
@@ -341,7 +359,7 @@ class DriveProxy:
                     drive_turn_scaling = cos(radians(target_rotation - current_rotation))
 
             pid_output *= drive_turn_scaling # reduce drive power when heading error is large
-            self._spin(pid_output + turn_pid_output, pid_output - turn_pid_output)
+            self._spin(pid_output + turn_pid_output, pid_output - turn_pid_output, self.use_voltage)
 
             end_time = timer.time(SECONDS)
             wait_time = drive_pid.timestep - (end_time - start_time)
@@ -443,7 +461,7 @@ class DriveProxy:
                 drive_turn_scaling = (1.0 - abs(turn_pid_output)) / abs(pid_output * drive_turn_scaling)
 
             pid_output *= drive_turn_scaling # reduce drive power when heading error is large
-            self._spin(pid_output + turn_pid_output, pid_output - turn_pid_output)
+            self._spin(pid_output + turn_pid_output, pid_output - turn_pid_output, self.use_voltage)
 
             end_time = timer.time(SECONDS)
             wait_time = drive_pid.timestep - (end_time - start_time)
@@ -494,7 +512,7 @@ class DriveProxy:
             return 0
 
 
-    def _spin(self, left_speed, right_speed):
+    def _spin(self, left_speed, right_speed, use_voltage):
         '''
         ### INTERNAL
 
@@ -502,7 +520,7 @@ class DriveProxy:
             left_speed ([-1.0, 1.0])
             right_speed ([-1.0, 1.0])
         '''
-        if (self.USE_VOLTAGE):
+        if (use_voltage):
             left_voltage = self.limit(left_speed * DriveProxy.MAX_VOLTAGE, DriveProxy.MAX_VOLTAGE)
             right_voltage = self.limit(right_speed * DriveProxy.MAX_VOLTAGE, DriveProxy.MAX_VOLTAGE)
 
@@ -531,7 +549,7 @@ class DriveProxy:
             None
         '''
         self._concurrency_check()
-        self._spin(left_speed / 100.0, right_speed / 100.0)
+        self._spin(left_speed / 100.0, right_speed / 100.0, self.use_voltage)
         return True
 
     def _stop(self, mode):
