@@ -121,6 +121,8 @@ class Logger:
 
         ```
         '''
+
+        # save brain and devices
         self.brain = brain
         if brain is None or not isinstance(brain, Brain):
             raise ValueError("Logger: A valid Brain instance must be provided")
@@ -130,6 +132,7 @@ class Logger:
         self.data_headers = data_headers
         self.data_fields_callback = data_fields_callback
 
+        # figure out buffer lengths
         if max_length > 0:
             self.rows = max_length
 
@@ -146,6 +149,7 @@ class Logger:
         self.cols = len(devices)  # Each device has value and timestamp
         self.dfcols = 0
 
+        # pre-allocate data storage
         self.vdata = array.array('f', [0.0] * (self.rows * self.cols))
         self.tdata = array.array('i', [0] * (self.rows * self.cols))
         self.dfdata = array.array('f')  # Initialize empty
@@ -157,9 +161,11 @@ class Logger:
         else:
             self.data_fields_callback = None
 
+        # need to preallocation bytearray for file writing, or we risk not being able to do this later
         self.bytearray = bytearray(4000)  # 4KB buffer for file writing
         self.bytelength = 4000
 
+        # header line for .csv file
         text_buffer = ""
         header_line = ", ".join(ext for h in self.headers for ext in ("{}_value".format(h), "{}_time".format(h)) )
         text_buffer += header_line
@@ -170,11 +176,15 @@ class Logger:
         text_buffer += "\n"
         self.header_buffer = bytearray(text_buffer, 'utf-8')
 
+        # flags
         self.index = 0
         self.enabled = False
         self.thread = None
         self.auto_dump = auto_dump
         self.file_name = file_name
+        self.saved = False
+
+        # figure out device types and assign as an enum
         self.types = []
         for device in devices:
             if isinstance(device, Motor):
@@ -212,6 +222,27 @@ class Logger:
         if (self.enabled):
             self.enabled = False
             self.auto_dump = dump
+
+    def dump(self):
+        '''
+        ### Dump logged data to the Brain's SD card
+        '''
+        # TODO: check if enabled and stop first?
+        print("Logger: Dumping logged data to SD card")
+        
+        if self.saved:
+            print("Logger: Data has already been dumped to SD card")
+            return False
+        
+        if self.enabled:
+            print("Logger: Stopping logging before dump")
+            # in this case let stop() handle the dump so things wrap up properly
+            self.stop(True)
+            return True
+
+        # if logging has already stopped and has not already been saved, manually dump here
+        self._dump(self.file_name)
+        return True
 
     def print(self, rate: int = 100):
         '''
