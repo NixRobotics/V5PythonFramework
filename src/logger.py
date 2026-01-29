@@ -375,6 +375,7 @@ class Logger:
         return 0
 
     def _dump(self, file_name: str = "log"):
+        self.saved = True
         print("Logger: Dumping log data to SD card")
         if not self.brain.sdcard.is_inserted():
             raise RuntimeError("Logger: No SD card inserted in Brain")
