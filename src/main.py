@@ -281,7 +281,7 @@ def smart_drive_to_points(drivetrain: SmartDriveWrapper, tracker: Tracking):
 
     print_tracker(tracker)
     
-    if True:
+    if False:
         # small test rectangle
         # field tiles are 601mm to 602mm across in reality
         # wheel size etc. are all calibrated assuming 600mm tiles
@@ -362,6 +362,78 @@ def smart_drive_to_points(drivetrain: SmartDriveWrapper, tracker: Tracking):
     
     wait(0.1, SECONDS)
     print_tracker(tracker, start_point[0], start_point[1])
+
+def position_callback():
+    return tracker.x, tracker.y, 0.0 # type: ignore
+
+def smart_drive_to_points_test(drivetrain: SmartDriveWrapper, tracker: Tracking):
+    print("smart_drive_to_points_test")
+
+    drive_speed = 33 # PERCENT
+    turn_speed = 33 # PERCENT
+    linear_speed_mm_sec, turn_speed_rev_sec = drivetrain_max_speeds(200, DRIVETRAIN_WHEEL_SIZE, DRIVETRAIN_GEAR_RATIO)
+    linear_speed_mm_sec *= (drive_speed / 100)
+    turn_speed_rev_sec *= (turn_speed / 100)
+
+    drivetrain.set_drive_velocity(drive_speed, PERCENT)
+    drivetrain.set_turn_velocity(turn_speed, PERCENT)
+    drivetrain.set_stopping(BrakeType.BRAKE)
+    drivetrain.set_turn_threshold(1.0) # DEGREES - Can relax constrains before longer drives
+    drivetrain.set_drive_threshold(10) # MM
+
+    print_tracker(tracker)
+    
+    # small test rectangle
+    # field tiles are 601mm to 602mm across in reality
+    # wheel size etc. are all calibrated assuming 600mm tiles
+    # X is NORTH-SOUTH, Y is EAST-WEST
+    x_near = 0.0
+    x_far = 2.0 * 600.0
+
+    y_left = 0.0
+    y_right = 2.0 * 600.0
+
+    y_mid = (y_left + y_right) / 2.0
+
+    points = [
+        [x_near, y_left, FORWARD], # start point
+        [x_far, y_left, FORWARD],
+        [x_near, y_mid, REVERSE],
+        [x_far, y_mid, FORWARD],
+        [x_near, y_right, REVERSE],
+        [x_far, y_right, FORWARD],
+        [x_near, y_left, REVERSE]
+    ]
+
+    start_point = points.pop(0) # remove first point as that is the starting point
+    tracker.set_orientation(Tracking.Orientation(start_point[0], start_point[1], 0.0))
+
+    for i in range(1):
+        for point in points:
+            print("")
+            x = point[0]
+            y = point[1]
+            dir = point[2]
+            print("----- Start Drive", i, x, y)            
+            print_tracker(tracker, x, y)
+            distance, heading = tracker.trajectory_to_point(x, y)
+            drive_timeout = 1.0 + distance / linear_speed_mm_sec # convert to MM/s and pad with 1 sec
+            drivetrain.set_timeout(drive_timeout, SECONDS)
+            drivetrain.drive_to_point(x, y, dir, position_callback)
+            wait(0.1, SECONDS)
+            print_tracker(tracker, x, y)
+
+    # Final Turn
+    print("Start Turn")
+
+    turn_timeout = 1.0
+    drivetrain.set_timeout(1.0 + turn_timeout * turn_speed / 100.0, SECONDS)
+    drivetrain.set_turn_threshold(0.25) # DEGREES - More accuracy here
+    drivetrain.turn_to_heading(0.0)
+    
+    wait(0.1, SECONDS)
+    print_tracker(tracker, start_point[0], start_point[1])
+
 
 def calibration_tracking_wheels(dt: SmartDriveWrapper):
 
@@ -466,10 +538,11 @@ def smart_drive_tests(tracker: Tracking):
     drivetrain.set_turn_constants(Kp=1.0, Ki=0.04, Kd=10.0)
     # drivetrain.set_turn_constants(Kp=1.25/2.0, Ki=0.003, Kd=0.095) # when using percent speed
     drivetrain.set_turn_threshold(0.5) # DEGREES
-    drivetrain.set_heading_lock_constants(Kp=2.0, Ki=0.0, Kd=0.0)
+    drivetrain.set_heading_lock_constants(Kp=1.25, Ki=0.0, Kd=0.0)
 
-    # smart_drive_to_points(drivetrain, tracker)
-    smart_turn_tests(drivetrain, tracker)
+    smart_drive_to_points(drivetrain, tracker)
+    # smart_turn_tests(drivetrain, tracker)
+    # smart_drive_to_points_test(drivetrain, tracker)
     
 # ------------------------------------------------------------ #
 # Auton Routines for DriveProxy DriveTrain
@@ -670,7 +743,6 @@ def autonomous():
     free = gc.mem_free() # type: ignore
     print(free)
 
-
     print("auton done")
 
 # ------------------------------------------------------------ #
@@ -713,7 +785,7 @@ def user_control():
     tracker.enable()
 
     drive_control = DriverControl(left_drive, right_drive, inertial)
-    drive_control.set_mode(follow_heading_Kp=2.0)
+    drive_control.set_mode(follow_heading_Kp=1.5)
     drive_control.set_mode(enable_drive_straight=True, enable_heading_lock=False, follow_heading=0.0)
 
     loop_count = 200

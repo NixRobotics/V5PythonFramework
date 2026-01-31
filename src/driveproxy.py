@@ -52,6 +52,7 @@ class DriveProxy:
         self.stop_mode = BrakeType.COAST
 
         self.drive_velocity = DriveProxy.MAX_PERCENT # percent
+        self.min_drive_velocity = 0.0 # percent
 
         self._this_timeout = None # timeout of current command in seconds (or None if no command running)
         self._was_timeout = False # Indicates if last command timed out 
@@ -91,6 +92,12 @@ class DriveProxy:
         self._concurrency_check()
         self.drive_velocity = velocity
         self.drive_pid_constants.max_output = velocity / 100.0
+        return True
+
+    def set_min_drive_velocity(self, velocity, unit):
+        if (unit is not PercentUnits.PERCENT): raise ValueError("Units must be PERCENT")
+        self._concurrency_check()
+        self.min_drive_velocity = velocity
         return True
 
     def set_drive_acceleration(self, acceleration, unit: VelocityPercentUnits):
@@ -448,6 +455,7 @@ class DriveProxy:
             #     cur_x, cur_y, distance_error, target_rotation - current_rotation))
 
             pid_output = drive_pid.compute(0.0, -distance_error_revs)
+            pid_output = self.limit_min(pid_output, self.min_drive_velocity / 100.0)
 
             turn_pid_output = 0.0
             drive_turn_scaling = 1.0
@@ -571,3 +579,11 @@ class DriveProxy:
         if (input > limit_value): return limit_value
         elif (input < -limit_value): return -limit_value
         return input
+
+    def limit_min(self, input, limit_value):
+        if(input < 0 and input > -limit_value):
+            return -limit_value
+        if(input > 0 and input < limit_value):
+            return limit_value
+        return input
+        

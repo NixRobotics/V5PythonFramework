@@ -245,6 +245,22 @@ class Tracking:
         :returns: Tracking.Orientation Tuple
         '''
         return Tracking.Orientation(0.0, 0.0, 0.0)
+    
+    def get_X(self):
+        '''
+        ### Docstring for get_X
+        
+        :returns: X coordinate in MM
+        '''
+        return 0.0
+    
+    def get_Y(self):
+        '''
+        ### Docstring for get_Y
+        
+        :returns: Y coordinate in MM
+        '''
+        return 0.0
 
     def set_orientation(self, orientation: Orientation, ignore_heading=False):
         '''
@@ -693,6 +709,18 @@ class SmartDriveWrapper(SmartDrive):
         to that function.
 
         :param velocity: The new velocity
+        :param (optional) units: Only PERCENT is supported
+        '''
+        pass
+
+    def set_min_drive_velocity(self, velocity, units:VelocityPercentUnits=VelocityUnits.PERCENT):
+        '''
+        ### Set the minimum velocity for drive commands
+
+        This will be the minimum velocity used for subsequent calls to drive commands that use minimum velocity for fast chaining.
+        Currently only drive_to_point() support this.
+
+        :param velocity: The new minimum velocity
         :param (optional) units: Only PERCENT is supported
         '''
         pass

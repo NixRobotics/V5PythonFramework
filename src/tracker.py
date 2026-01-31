@@ -474,6 +474,22 @@ class Tracking:
         :returns: Tracking.Orientation Tuple
         '''
         return Tracking.Orientation(self.x, self.y, self.inertial.heading(DEGREES))
+    
+    def get_X(self):
+        '''
+        ### Docstring for get_X
+        
+        :returns: X coordinate in MM
+        '''
+        return self.x
+    
+    def get_Y(self):
+        '''
+        ### Docstring for get_Y
+        
+        :returns: Y coordinate in MM
+        '''
+        return self.y
 
     def set_orientation(self, orientation: Orientation, ignore_heading=False):
         '''
