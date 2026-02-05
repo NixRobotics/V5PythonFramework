@@ -615,6 +615,22 @@ class Tracking:
         angle = InertialWrapper.to_angle(heading)
         self.inertial.set_rotation(angle, RotationUnits.DEG)
 
+    def _avg_motor_positions(self, mg: MotorGroup) -> float:
+        '''
+        ### INTERNAL Docstring for avg_motor_positions
+        
+        :param mg: Description
+        :type mg: MotorGroup
+        '''
+        num_motors = len(mg._motors)
+        if num_motors == 0:
+            raise RuntimeError("No Motors Found")
+        sum = 0
+        for m in mg._motors:
+            sum += m.position(RotationUnits.REV)
+        sum = (sum / len(mg._motors))
+        return sum
+
     def _avg_motor_times(self, mg: MotorGroup) -> int:
         '''
         ### INTERNAL Docstring for avg_motor_times
@@ -702,8 +718,8 @@ class Tracking:
         last_timestamps = array.array('i', [0, 0, 0, 0])
 
         while(True):
-            values[0] = left_drive.position(RotationUnits.REV)
-            values[1] = right_drive.position(RotationUnits.REV)
+            values[0] = self._avg_motor_positions(left_drive)
+            values[1] = self._avg_motor_positions(right_drive)
             values[2] = 0.0
             values[3] = Tracking.gyro_theta(inertial)
 

@@ -3,7 +3,7 @@ from motorgroup import * # pyright: ignore[reportMissingImports]
 from drivetrain import * # pyright: ignore[reportMissingImports]
 from smartdrive import * # pyright: ignore[reportMissingImports]
 from inertialwrapper import InertialWrapper
-from  driveproxy import DriveProxy
+from driveproxy import DriveProxy
 
 class SmartDriveWrapper(SmartDrive):
     '''

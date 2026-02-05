@@ -369,8 +369,8 @@ def position_callback():
 def smart_drive_to_points_test(drivetrain: SmartDriveWrapper, tracker: Tracking):
     print("smart_drive_to_points_test")
 
-    drive_speed = 33 # PERCENT
-    turn_speed = 33 # PERCENT
+    drive_speed = 66 # PERCENT
+    turn_speed = 66 # PERCENT
     linear_speed_mm_sec, turn_speed_rev_sec = drivetrain_max_speeds(200, DRIVETRAIN_WHEEL_SIZE, DRIVETRAIN_GEAR_RATIO)
     linear_speed_mm_sec *= (drive_speed / 100)
     turn_speed_rev_sec *= (turn_speed / 100)
@@ -388,10 +388,10 @@ def smart_drive_to_points_test(drivetrain: SmartDriveWrapper, tracker: Tracking)
     # wheel size etc. are all calibrated assuming 600mm tiles
     # X is NORTH-SOUTH, Y is EAST-WEST
     x_near = 0.0
-    x_far = 2.0 * 600.0
+    x_far = 1.0 * 600.0
 
     y_left = 0.0
-    y_right = 2.0 * 600.0
+    y_right = 1.0 * 600.0
 
     y_mid = (y_left + y_right) / 2.0
 
@@ -423,15 +423,19 @@ def smart_drive_to_points_test(drivetrain: SmartDriveWrapper, tracker: Tracking)
             wait(0.1, SECONDS)
             print_tracker(tracker, x, y)
 
-    # Final Turn
-    print("Start Turn")
+            wait(2, SECONDS)
 
-    turn_timeout = 1.0
-    drivetrain.set_timeout(1.0 + turn_timeout * turn_speed / 100.0, SECONDS)
-    drivetrain.set_turn_threshold(0.25) # DEGREES - More accuracy here
-    drivetrain.turn_to_heading(0.0)
-    
-    wait(0.1, SECONDS)
+    # Final Turn
+    if True:
+        print("Start Turn")
+
+        turn_timeout = 1.0
+        drivetrain.set_timeout(1.0 + turn_timeout * turn_speed / 100.0, SECONDS)
+        drivetrain.set_turn_threshold(0.25) # DEGREES - More accuracy here
+        drivetrain.turn_to_heading(0.0)
+        
+        wait(0.1, SECONDS)
+
     print_tracker(tracker, start_point[0], start_point[1])
 
 
@@ -540,9 +544,9 @@ def smart_drive_tests(tracker: Tracking):
     drivetrain.set_turn_threshold(0.5) # DEGREES
     drivetrain.set_heading_lock_constants(Kp=1.25, Ki=0.0, Kd=0.0)
 
-    smart_drive_to_points(drivetrain, tracker)
+    # smart_drive_to_points(drivetrain, tracker)
     # smart_turn_tests(drivetrain, tracker)
-    # smart_drive_to_points_test(drivetrain, tracker)
+    smart_drive_to_points_test(drivetrain, tracker)
     
 # ------------------------------------------------------------ #
 # Auton Routines for DriveProxy DriveTrain

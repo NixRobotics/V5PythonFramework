@@ -139,7 +139,7 @@ class DriveProxy:
         if (unit is not PercentUnits.PERCENT): raise ValueError("Units must be PERCENT")
         self._concurrency_check()
         self.turn_pid_constants.max_output = velocity / 100.0
-        self.heading_lock_pid_constants.max_output = velocity / 100.0
+        # self.heading_lock_pid_constants.max_output = velocity / 100.0
         return True
 
     def set_turn_acceleration(self, acceleration, unit):
@@ -231,7 +231,7 @@ class DriveProxy:
         reference_rotation_speed = 360.0 # deg/s
         return reference_rotation_speed * self.linear_speed() / reference_linear_speed
     
-    def test_finish_line(self, target_x, target_y, target_angle, current_x, current_y):
+    def test_finish_line(self, target_x, target_y, target_angle, current_x, current_y, reverse):
         '''
         test_finish_line checks if the robot has crossed the line perpendicular to the path to the target point
         Provides a way to stop robot hunting for the target point when it gets close, avoiding large swings in angle
@@ -241,8 +241,13 @@ class DriveProxy:
         :param target_angle: Description
         :param current_x: Description
         :param current_y: Description
+        :param reverse: Description
         '''
-        return( (target_y-current_y) * sin(radians(target_angle)) <= -(target_x-current_x) * cos(radians(target_angle)) )
+        if reverse:
+            is_crossed = (target_y-current_y) * sin(radians(target_angle)) > -(target_x-current_x) * cos(radians(target_angle))
+        else:
+            is_crossed = (target_y-current_y) * sin(radians(target_angle)) <= -(target_x-current_x) * cos(radians(target_angle))
+        return is_crossed
 
     def turn_to_heading(self, heading, settle_error = None, timeout = None, wait = True, use_voltage = True):
         angle = self.inertial.calc_angle_to_heading(heading)
@@ -402,111 +407,111 @@ class DriveProxy:
             return 0
 
     def _drive_to_point(self, x, y, direction, orientation_callback, settle_error, timeout):
-        '''
-        ### INTERNAL
-        '''
-        self._command_running = True
-        timer = Timer()
+            '''
+            ### INTERNAL
+            '''
+            self._command_running = True
+            timer = Timer()
 
-        # Initialize drive PID
-        drive_pid = PID(self.drive_pid_constants.Kp, self.drive_pid_constants.Ki, self.drive_pid_constants.Kd)
-        drive_pid.set_output_limit(self.drive_pid_constants.max_output) # limit output to 50% power
-        drive_pid.set_output_ramp_limit(self.drive_pid_constants.max_ramp)
-        # see if we want to override settle and timeout
-        if settle_error is None: drive_settle_error = self.drive_pid_constants.settle_error
-        else: drive_settle_error = self.calc_drive_settle_error(settle_error)
-        drive_pid.set_settle_threshold(drive_settle_error)
-        self._this_timeout = self.default_timeout if timeout is None else timeout
-        drive_pid.set_timeout(self._this_timeout)
+            # Initialize drive PID
+            drive_pid = PID(self.drive_pid_constants.Kp, self.drive_pid_constants.Ki, self.drive_pid_constants.Kd)
+            drive_pid.set_output_limit(self.drive_pid_constants.max_output) # limit output to 50% power
+            drive_pid.set_output_ramp_limit(self.drive_pid_constants.max_ramp)
+            # see if we want to override settle and timeout
+            if settle_error is None: drive_settle_error = self.drive_pid_constants.settle_error
+            else: drive_settle_error = self.calc_drive_settle_error(settle_error)
+            drive_pid.set_settle_threshold(drive_settle_error)
+            self._this_timeout = self.default_timeout if timeout is None else timeout
+            drive_pid.set_timeout(self._this_timeout)
 
-        # Initialize heading PID
-        # Note this will be free-running with no settle or timeout
-        turn_pid = PID(self.heading_lock_pid_constants.Kp, self.heading_lock_pid_constants.Ki, self.heading_lock_pid_constants.Kd)
-        turn_pid.set_output_limit(self.heading_lock_pid_constants.max_output) # limit output to 50% power
-        turn_pid.set_settle_time(0.0)
-        turn_pid.set_timeout(0.0)
+            # Initialize heading PID
+            # Note this will be free-running with no settle or timeout
+            turn_pid = PID(self.heading_lock_pid_constants.Kp, self.heading_lock_pid_constants.Ki, self.heading_lock_pid_constants.Kd)
+            turn_pid.set_output_limit(self.heading_lock_pid_constants.max_output)
+            turn_pid.set_settle_time(0.0)
+            turn_pid.set_timeout(0.0)
 
-        # Get robot start location and initial angle to target (reverse if driving backwards)
-        cur_x, cur_y, cur_heading = orientation_callback()
-        start_angle = degrees(atan2(y - cur_y, x - cur_x))
-        start_angle = start_angle if direction == DirectionType.FORWARD else InertialWrapper.to_angle(start_angle + 180.0)
-        print("Start Drive to Point: ({:.1f}, {:.1f}), Direction: {}, Start Angle: {:.2f}".format(x, y, direction, start_angle))
-
-        # Finish Line crossing detection
-        # Finish Line is defined as perpendicular to line from start to target point
-        # line_settled will force early exit from loop
-        line_settled = False
-        prev_line_settled = self.test_finish_line(x, y, start_angle, cur_x, cur_y)
-
-        while not drive_pid.is_done() and not self._cancel_command:
-            start_time = timer.time(SECONDS)
-
+            # Get robot start location and initial angle to target (reverse if driving backwards)
             cur_x, cur_y, cur_heading = orientation_callback()
-            
-            # Check finish line crossing
-            line_settled = self.test_finish_line(x, y, start_angle, cur_x, cur_y)
-            if (line_settled and not prev_line_settled):
-                print("Finished line to point at position: ({:.1f}, {:.1f})".format(cur_x, cur_y))
-                break
-            prev_line_settled = line_settled
+            start_angle = degrees(atan2(y - cur_y, x - cur_x))
+            start_angle = start_angle if direction == DirectionType.FORWARD else InertialWrapper.to_angle(start_angle + 180.0)
+            print("Start Drive to Point: ({:.1f}, {:.1f}), Direction: {}, Start Angle: {:.2f}".format(x, y, direction, start_angle))
 
-            # Distance to target in motor revolutions (reverse if driving backwards)
-            distance_error = ((x - cur_x) ** 2 + (y - cur_y) ** 2) ** 0.5
-            distance_error_revs = 360.0 * distance_error / (self.wheel_travel_mm * self.ext_gear_ratio) # convert mm to wheel revolutions
-            distance_error_revs = distance_error_revs if direction == DirectionType.FORWARD else -distance_error_revs
+            # Finish Line crossing detection
+            # Finish Line is defined as perpendicular to line from start to target point
+            # line_settled will force early exit from loop
+            line_settled = False
+            prev_line_settled = self.test_finish_line(x, y, start_angle, cur_x, cur_y, direction==DirectionType.REVERSE)
 
-            # Heading to target point (reverse if driving backwards)
-            target_heading = InertialWrapper.to_heading(degrees(atan2(y - cur_y, x - cur_x)))
-            target_heading = target_heading if direction == DirectionType.FORWARD else InertialWrapper.to_heading(target_heading + 180.0)
-            target_rotation = self.inertial.calc_rotation_at_heading(target_heading)
-            current_rotation = self.inertial.rotation()
+            while not drive_pid.is_done() and not self._cancel_command:
+                start_time = timer.time(SECONDS)
 
-            # print("Drive to Point: Pos ({:.1f}, {:.1f}), Dist Err: {:.1f} mm, Heading Err: {:.2f} deg".format(
-            #     cur_x, cur_y, distance_error, target_rotation - current_rotation))
+                cur_x, cur_y, cur_heading = orientation_callback()
+                
+                # Check finish line crossing
+                line_settled = self.test_finish_line(x, y, start_angle, cur_x, cur_y, direction==DirectionType.REVERSE)
+                if (line_settled and not prev_line_settled):
+                    print("Finish line crossed at: ({:.1f}, {:.1f})".format(cur_x, cur_y))
+                    break
+                prev_line_settled = line_settled
 
-            # Get the drive PID output, limited to above min drive velocity if specified
-            pid_output = drive_pid.compute(0.0, -distance_error_revs)
-            pid_output = self.limit_min(pid_output, self.min_drive_velocity / 100.0)
+                # Distance to target in motor revolutions (reverse if driving backwards)
+                distance_error = ((x - cur_x) ** 2 + (y - cur_y) ** 2) ** 0.5
+                distance_error_revs = 360.0 * distance_error / (self.wheel_travel_mm * self.ext_gear_ratio) # convert mm to wheel revolutions
+                distance_error_revs = distance_error_revs if direction == DirectionType.FORWARD else -distance_error_revs
 
-            # Turn PID output only if we are not within drive settle error
-            turn_pid_output = 0.0
-            drive_turn_scaling = 1.0
-            if (distance_error_revs > drive_settle_error):
-                turn_pid_output = turn_pid.compute(target_rotation, current_rotation)
-            
-            # Scale down drive power based on heading error
-            drive_turn_scaling = cos(radians(target_rotation - current_rotation))
-            if drive_turn_scaling < 0.0: drive_turn_scaling = 0.0
+                # Heading to target point (reverse if driving backwards)
+                target_heading = InertialWrapper.to_heading(degrees(atan2(y - cur_y, x - cur_x)))
+                target_heading = target_heading if direction == DirectionType.FORWARD else InertialWrapper.to_heading(target_heading + 180.0)
+                target_rotation = self.inertial.calc_rotation_at_heading(target_heading)
+                current_rotation = self.inertial.rotation()
 
-            # Make sure we have turn control authority
-            if abs(pid_output * drive_turn_scaling) + abs(turn_pid_output) > 1.0:
-                drive_turn_scaling = (1.0 - abs(turn_pid_output)) / abs(pid_output * drive_turn_scaling)
+                # print("P ({:.1f}, {:.1f}), DErr: {:.1f} mm, HErr: {:.2f} deg".format(
+                #     cur_x, cur_y, distance_error, target_rotation - current_rotation))
 
-            pid_output *= drive_turn_scaling # reduce drive power when heading error is large
-            self._spin(pid_output + turn_pid_output, pid_output - turn_pid_output, self.use_voltage)
+                # Get the drive PID output, limited to above min drive velocity if specified
+                pid_output = drive_pid.compute(0.0, -distance_error_revs)
+                pid_output = self.limit_min(pid_output, self.min_drive_velocity / 100.0)
 
-            end_time = timer.time(SECONDS)
-            wait_time = drive_pid.timestep - (end_time - start_time)
-            wait(wait_time, SECONDS)
+                # Turn PID output only if we are not within drive settle error
+                turn_pid_output = 0.0
+                drive_turn_scaling = 1.0
+                if (abs(distance_error_revs) > drive_settle_error):
+                    turn_pid_output = turn_pid.compute(target_rotation, current_rotation)
+                
+                # Scale down drive power based on heading error
+                drive_turn_scaling = cos(radians(target_rotation - current_rotation))
+                if drive_turn_scaling < 0.0: drive_turn_scaling = 0.0
 
-        self._was_timeout = drive_pid.get_is_timed_out()
+                # Make sure we have turn control authority
+                if abs(pid_output * drive_turn_scaling) + abs(turn_pid_output) > 1.0:
+                    drive_turn_scaling = (1.0 - abs(turn_pid_output)) / abs(pid_output * drive_turn_scaling)
 
-        # If we have min drive velocity specified, only use COAST
-        # TODO: See if this works better with just leaving last motor command in place
-        if abs(self.min_drive_velocity) > 0.0:
-            self._stop(COAST)
-        else:
-            self._stop(self.stop_mode)
-        print("Done Drive: ", timer.time(), drive_pid.get_is_settled(), drive_pid.get_is_timed_out())
+                pid_output *= drive_turn_scaling # reduce drive power when heading error is large
+                self._spin(pid_output + turn_pid_output, pid_output - turn_pid_output, self.use_voltage)
 
-        # for log_entry in drive_pid.log:
-        #     print(log_entry[0], ",", log_entry[1], ",", log_entry[2])
-        #     wait(50, MSEC)
-        self._this_timeout = None
-        self._command_running = False
-        if (self._was_timeout): self._timeout_notifier.broadcast()
-        return timer.time()
-        
+                end_time = timer.time(SECONDS)
+                wait_time = drive_pid.timestep - (end_time - start_time)
+                wait(wait_time, SECONDS)
+
+            self._was_timeout = drive_pid.get_is_timed_out()
+
+            # If we have min drive velocity specified, only use COAST
+            # TODO: See if this works better with just leaving last motor command in place
+            if abs(self.min_drive_velocity) > 0.0:
+                self._stop(COAST)
+            else:
+                self._stop(self.stop_mode)
+            print("Done Drive: ", timer.time(), drive_pid.get_is_settled(), drive_pid.get_is_timed_out())
+
+            # for log_entry in drive_pid.log:
+            #     print(log_entry[0], ",", log_entry[1], ",", log_entry[2])
+            #     wait(50, MSEC)
+            self._this_timeout = None
+            self._command_running = False
+            if (self._was_timeout): self._timeout_notifier.broadcast()
+            return timer.time()
+
     def _drive_to_point_thread(self, x, y, direction, orientation_callback, settle_error, timeout):
         '''
         ### INTERNAL
@@ -606,4 +611,3 @@ class DriveProxy:
         if(input > 0 and input < limit_value):
             return limit_value
         return input
-        
