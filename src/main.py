@@ -370,7 +370,7 @@ def smart_drive_to_points_test(drivetrain: SmartDriveWrapper, tracker: Tracking)
     print("smart_drive_to_points_test")
 
     drive_speed = 66 # PERCENT
-    turn_speed = 66 # PERCENT
+    turn_speed = 50 # PERCENT
     linear_speed_mm_sec, turn_speed_rev_sec = drivetrain_max_speeds(200, DRIVETRAIN_WHEEL_SIZE, DRIVETRAIN_GEAR_RATIO)
     linear_speed_mm_sec *= (drive_speed / 100)
     turn_speed_rev_sec *= (turn_speed / 100)
@@ -387,43 +387,63 @@ def smart_drive_to_points_test(drivetrain: SmartDriveWrapper, tracker: Tracking)
     # field tiles are 601mm to 602mm across in reality
     # wheel size etc. are all calibrated assuming 600mm tiles
     # X is NORTH-SOUTH, Y is EAST-WEST
-    x_near = 0.0
-    x_far = 1.0 * 600.0
+    if False:
+        x_near = 0.5
+        x_far = x_near + 2.0
 
-    y_left = 0.0
-    y_right = 1.0 * 600.0
+        y_left = 0.5
+        y_right = y_left + 2.0
 
-    y_mid = (y_left + y_right) / 2.0
+        y_mid = (y_left + y_right) / 2.0
 
-    points = [
-        [x_near, y_left, FORWARD], # start point
-        [x_far, y_left, FORWARD],
-        [x_near, y_mid, REVERSE],
-        [x_far, y_mid, FORWARD],
-        [x_near, y_right, REVERSE],
-        [x_far, y_right, FORWARD],
-        [x_near, y_left, REVERSE]
-    ]
+        points = [
+            [x_near, y_left, FORWARD], # start point
+            [x_far, y_left, FORWARD],
+            [x_near, y_mid, REVERSE],
+            [x_far, y_mid, FORWARD],
+            [x_near, y_right, REVERSE],
+            [x_far, y_right, FORWARD],
+            [x_near, y_left, REVERSE]
+        ]
+    else:
+
+        points = [
+            [1.0, 1.0, FORWARD], # start point
+            [1.5, 0.5, FORWARD],
+            [2.0, 0.5, FORWARD],
+            [2.5, 1.0, FORWARD],
+            [2.5, 2.0, FORWARD],
+            [2.0, 2.5, FORWARD],
+            [1.0, 2.5, FORWARD],
+            [0.5, 2.0, FORWARD],
+            [0.5, 1.0, FORWARD],
+            [1.0, 1.0, FORWARD],
+        ]
+
+        drivetrain.set_min_drive_velocity(50, PERCENT)
+        print(drivetrain.dp.min_drive_velocity)
 
     start_point = points.pop(0) # remove first point as that is the starting point
-    tracker.set_orientation(Tracking.Orientation(start_point[0], start_point[1], 0.0))
+    tracker.set_orientation(Tracking.Orientation(start_point[0] * 600.0, start_point[1] * 600.0, 0.0))
 
     for i in range(1):
         for point in points:
             print("")
-            x = point[0]
-            y = point[1]
+            x = point[0] * 600.0
+            y = point[1] * 600.0
             dir = point[2]
             print("----- Start Drive", i, x, y)            
             print_tracker(tracker, x, y)
             distance, heading = tracker.trajectory_to_point(x, y)
             drive_timeout = 1.0 + distance / linear_speed_mm_sec # convert to MM/s and pad with 1 sec
             drivetrain.set_timeout(drive_timeout, SECONDS)
-            drivetrain.drive_to_point(x, y, dir, position_callback)
-            wait(0.1, SECONDS)
+            drivetrain.drive_to_point(x, y, dir, position_callback, turn_limit=300.0)
+            # wait(0.1, SECONDS)
             print_tracker(tracker, x, y)
 
-            wait(2, SECONDS)
+            # wait(2, SECONDS)
+    drivetrain.stop(BRAKE)
+    drivetrain.set_min_drive_velocity(0, PERCENT)
 
     # Final Turn
     if True:

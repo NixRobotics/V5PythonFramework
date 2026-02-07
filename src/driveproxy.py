@@ -139,7 +139,7 @@ class DriveProxy:
         if (unit is not PercentUnits.PERCENT): raise ValueError("Units must be PERCENT")
         self._concurrency_check()
         self.turn_pid_constants.max_output = velocity / 100.0
-        # self.heading_lock_pid_constants.max_output = velocity / 100.0
+        self.heading_lock_pid_constants.max_output = velocity / 100.0
         return True
 
     def set_turn_acceleration(self, acceleration, unit):
@@ -406,7 +406,7 @@ class DriveProxy:
             self._worker_thread = Thread(self._drive_for_thread, (direction, distance, unit, heading, settle_error, timeout))
             return 0
 
-    def _drive_to_point(self, x, y, direction, orientation_callback, settle_error, timeout):
+    def _drive_to_point(self, x, y, direction, orientation_callback, settle_error, turn_limit, timeout):
             '''
             ### INTERNAL
             '''
@@ -421,6 +421,7 @@ class DriveProxy:
             if settle_error is None: drive_settle_error = self.drive_pid_constants.settle_error
             else: drive_settle_error = self.calc_drive_settle_error(settle_error)
             drive_pid.set_settle_threshold(drive_settle_error)
+            turn_limit_mm = abs(turn_limit) if turn_limit is not None else 0.0
             self._this_timeout = self.default_timeout if timeout is None else timeout
             drive_pid.set_timeout(self._this_timeout)
 
@@ -478,7 +479,10 @@ class DriveProxy:
                 drive_turn_scaling = 1.0
                 if (abs(distance_error_revs) > drive_settle_error):
                     turn_pid_output = turn_pid.compute(target_rotation, current_rotation)
-                
+                # dampen turn PID output as we get close to target
+                if (abs(distance_error) < turn_limit_mm):
+                    turn_pid_output = turn_pid_output * abs(distance_error) / turn_limit_mm
+
                 # Scale down drive power based on heading error
                 drive_turn_scaling = cos(radians(target_rotation - current_rotation))
                 if drive_turn_scaling < 0.0: drive_turn_scaling = 0.0
@@ -499,7 +503,8 @@ class DriveProxy:
             # If we have min drive velocity specified, only use COAST
             # TODO: See if this works better with just leaving last motor command in place
             if abs(self.min_drive_velocity) > 0.0:
-                self._stop(COAST)
+                # self._stop(COAST)
+                pass
             else:
                 self._stop(self.stop_mode)
             print("Done Drive: ", timer.time(), drive_pid.get_is_settled(), drive_pid.get_is_timed_out())
@@ -512,13 +517,13 @@ class DriveProxy:
             if (self._was_timeout): self._timeout_notifier.broadcast()
             return timer.time()
 
-    def _drive_to_point_thread(self, x, y, direction, orientation_callback, settle_error, timeout):
+    def _drive_to_point_thread(self, x, y, direction, orientation_callback, settle_error, turn_limit, timeout):
         '''
         ### INTERNAL
         '''
-        self._drive_to_point(x, y, direction, orientation_callback, settle_error, timeout)
+        self._drive_to_point(x, y, direction, orientation_callback, settle_error, turn_limit, timeout)
 
-    def drive_to_point(self, x: float, y: float, direction, orientation_callback: Callable, settle_error: float | None = None, timeout: float | None = None, wait: bool = True):
+    def drive_to_point(self, x: float, y: float, direction, orientation_callback: Callable, settle_error: float | None = None, turn_limit: float | None = None, timeout: float | None = None, wait: bool = True):
         '''
         Docstring for drive_to_point
         
@@ -531,6 +536,8 @@ class DriveProxy:
         :type orientation_callback: Callable
         :param settle_error: Description
         :type settle_error: float | None
+        :param turn_limit: Description
+        :type turn_limit: float | None
         :param timeout: Description
         :type timeout: float | None
         :param wait: Description
@@ -539,9 +546,9 @@ class DriveProxy:
         self._concurrency_check()
         self._command_running = True
         if wait:
-            return self._drive_to_point(x, y, direction, orientation_callback, settle_error, timeout)
+            return self._drive_to_point(x, y, direction, orientation_callback, settle_error, turn_limit, timeout)
         else:
-            self._worker_thread = Thread(self._drive_to_point_thread, (x, y, direction, orientation_callback, settle_error, timeout))
+            self._worker_thread = Thread(self._drive_to_point_thread, (x, y, direction, orientation_callback, settle_error, turn_limit, timeout))
             return 0
 
 
