@@ -188,8 +188,8 @@ def pre_autonomous():
 
     wait(0.1, SECONDS)
 
-    brain.screen.clear_screen()
-    brain.screen.set_cursor(1,1)
+    # brain.screen.clear_screen()
+    # brain.screen.set_cursor(1,1)
     brain.screen.print("pre auton")
     brain.screen.new_line()
     print("pre_auton")
@@ -225,13 +225,14 @@ def pre_autonomous():
 
     # dummy wait to allow auton or user control to start
     # UI would run here is present
-    if not AUTON_STARTED and not USER_STARTED:
-        ui = PreAutonUI(brain)
-        ui.start()
-        while not AUTON_STARTED and not USER_STARTED:
-            wait(100, MSEC)
-        ui.stop()
-        alliance, sequence = ui.get_current_selection() # gives our alliance color and auton sequence
+    if False:
+        if not AUTON_STARTED and not USER_STARTED:
+            ui = PreAutonUI(brain)
+            ui.start()
+            while not AUTON_STARTED and not USER_STARTED:
+                wait(100, MSEC)
+            ui.stop()
+            alliance, sequence = ui.get_current_selection() # gives our alliance color and auton sequence
 
     # optionally run the motor monitor
     # note right now this takes over the whole screen
@@ -752,7 +753,7 @@ def autonomous():
     while not ROBOT_INITIALIZED:
         wait(10, MSEC)
 
-    brain.screen.clear_screen()
+    # brain.screen.clear_screen()
     brain.screen.print("auton")
     brain.screen.new_line()
     print("auton")
@@ -761,8 +762,8 @@ def autonomous():
         raise RuntimeError("Tracker not initialized")
     tracker.enable()
 
-    # drive_proxy_tests(tracker)
-    smart_drive_tests(tracker)
+    drive_proxy_tests(tracker)
+    # smart_drive_tests(tracker)
 
     free = gc.mem_free() # type: ignore
     print(free)
@@ -800,7 +801,7 @@ def user_control():
     free = gc.mem_free() # type: ignore
     print(free)
 
-    brain.screen.clear_screen()
+    # brain.screen.clear_screen()
     brain.screen.print("user control")
     brain.screen.new_line()
 
@@ -820,6 +821,9 @@ def user_control():
             print_tracker(tracker)
             loop_count = 200
         wait(10, MSEC)
+
+brain.screen.clear_screen()
+brain.screen.set_cursor(1,1)
 
 comp = Competition(user_control, autonomous)
 pre_autonomous()
