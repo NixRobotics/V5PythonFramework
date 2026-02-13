@@ -144,6 +144,29 @@ def initialize_odom_tracker():
 
     return tracker
 
+def avg_motor_position(motor_group: MotorGroup):
+    return sum([motor.position(RotationUnits.REV) for motor in motor_group._motors]) / len(motor_group._motors)
+
+def wait_for_drivetrain_stopped(left_drive: MotorGroup, right_drive: MotorGroup, timeout: int = 50):
+    last_left_position = avg_motor_position(left_drive)
+    last_right_position = avg_motor_position(right_drive)
+    counter = 0
+    while True:
+        counter += 1
+        wait(10, MSEC)
+        left_position = avg_motor_position(left_drive)
+        right_position = avg_motor_position(right_drive)
+        if abs(left_position - last_left_position) != 0.0 or abs(right_position - last_right_position) != 0.0:
+            if counter * 10 >= timeout:
+                print("Drivetrain did not stop within timeout")
+                return
+            last_left_position = left_position
+            last_right_position = right_position
+        else:
+            break
+
+    print("Drivetrain stopped after", counter * 10, "ms")
+
 def change_tracker(new_tracker: Tracking, old_tracker: Tracking):
     global tracker
     if new_tracker is None or old_tracker is None:
@@ -552,6 +575,12 @@ def smart_turn_tests(drivetrain: SmartDriveWrapper, tracker: Tracking):
         heading_error = final_heading - target_heading
         #print(" Final Heading: {:.2f} deg, Heading Error: {:.2f} deg".format(final_heading, heading_error))
 
+def smart_drive_stop_test(drivetrain: SmartDriveWrapper, tracker: Tracking):
+    drivetrain.set_drive_velocity(100, PERCENT)
+    drivetrain.set_stopping(BrakeType.BRAKE)
+    drivetrain.drive_for(FORWARD, 2.0 * 600.0, MM)
+    wait_for_drivetrain_stopped(left_drive, right_drive)
+
 def smart_drive_tests(tracker: Tracking):
     drivetrain = SmartDriveWrapper(left_drive, right_drive, inertial, DRIVETRAIN_WHEEL_SIZE, 320, 320, MM, DRIVETRAIN_GEAR_RATIO)
 
@@ -567,7 +596,8 @@ def smart_drive_tests(tracker: Tracking):
 
     # smart_drive_to_points(drivetrain, tracker)
     # smart_turn_tests(drivetrain, tracker)
-    smart_drive_to_points_test(drivetrain, tracker)
+    # smart_drive_to_points_test(drivetrain, tracker)
+    smart_drive_stop_test(drivetrain, tracker)
     
 # ------------------------------------------------------------ #
 # Auton Routines for DriveProxy DriveTrain
@@ -762,8 +792,8 @@ def autonomous():
         raise RuntimeError("Tracker not initialized")
     tracker.enable()
 
-    drive_proxy_tests(tracker)
-    # smart_drive_tests(tracker)
+    # drive_proxy_tests(tracker)
+    smart_drive_tests(tracker)
 
     free = gc.mem_free() # type: ignore
     print(free)

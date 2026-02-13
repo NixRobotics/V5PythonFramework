@@ -111,6 +111,7 @@ class DriveProxy:
         '''
         ### Converts settle error in MM to degrees of wheel rotation
         '''
+        # settle_error_mm = wheel_travel * gear_ratio / 360
         return 360.0 * settle_error / (self.wheel_travel_mm * self.ext_gear_ratio)
 
     def set_drive_constants(self, Kp=None, Ki=None, Kd=None, settle_error=None):
@@ -330,6 +331,7 @@ class DriveProxy:
         drive_pid.set_output_limit(self.drive_pid_constants.max_output) # limit output to 50% power
         drive_pid.set_output_ramp_limit(self.drive_pid_constants.max_ramp)
         # see if we want to override settle and timeout
+        # print("Drive Settle Error: ", self.drive_pid_constants.settle_error)
         if (settle_error is None): drive_pid.set_settle_threshold(self.drive_pid_constants.settle_error)
         else: drive_pid.set_settle_threshold(self.calc_drive_settle_error(settle_error))
         self._this_timeout = self.default_timeout if timeout is None else timeout
@@ -343,19 +345,20 @@ class DriveProxy:
 
             target_rotation = self.inertial.calc_rotation_at_heading(heading)
 
-        left_start_pos = self.left_motors.position(RotationUnits.DEG)
-        right_start_pos = self.right_motors.position(RotationUnits.DEG)
+        left_start_pos = self._avg_motor_position(self.left_motors, RotationUnits.DEG)
+        right_start_pos = self._avg_motor_position(self.right_motors, RotationUnits.DEG)
 
         target_distance_revs = 360.0 * distance / (self.wheel_travel_mm * self.ext_gear_ratio) # convert mm to wheel revolutions assuming 100mm diameter wheels
         target_position = target_distance_revs if direction == DirectionType.FORWARD else -target_distance_revs
 
         loop_count = 0
+        current_position = 0.0
         while not drive_pid.is_done() and not self._cancel_command:
             start_time = timer.time(SECONDS)
 
             current_position = (
-                (self.left_motors.position(RotationUnits.DEG) - left_start_pos) +
-                (self.right_motors.position(RotationUnits.DEG) - right_start_pos)) / 2.0
+                (self._avg_motor_position(self.left_motors, RotationUnits.DEG) - left_start_pos) +
+                (self._avg_motor_position(self.right_motors, RotationUnits.DEG) - right_start_pos)) / 2.0
 
             pid_output = drive_pid.compute(target_position, current_position)
 
@@ -378,6 +381,7 @@ class DriveProxy:
             loop_count += 1
             wait(wait_time, SECONDS)
 
+        # print("Drive Final Position: ", current_position, target_position)
         self._was_timeout = drive_pid.get_is_timed_out()
         self._stop(self.stop_mode)
         rate = timer.time() / loop_count if loop_count > 0 else 0.0
@@ -591,6 +595,14 @@ class DriveProxy:
         self._concurrency_check()
         self._spin(left_speed / 100.0, right_speed / 100.0, self.use_voltage)
         return True
+    
+    def _avg_motor_position(self, mg: MotorGroup, unit = RotationUnits.DEG):
+        if unit is not RotationUnits.DEG:
+            raise NotImplementedError("Units must be RotationUnits.DEG")
+        sum = 0.0
+        for motor in mg._motors:
+            sum += motor.position(unit)
+        return sum / len(mg._motors) if len(mg._motors) > 0 else 0.0
 
     def _stop(self, mode):
         '''

@@ -22,7 +22,7 @@ class SmartDriveWrapper(SmartDrive):
     It also implements full control over PID supporting Kp, Ki and Kd for turning, driving
     and heading hold. Three new functions are added to support this:\\
         - set_turn_constants()\\
-        - set_drive_constantss()\\
+        - set_drive_constants()\\
         - set_heading_lock_constants()\\
 
     It is also based on the InertialWrapper class that provides scaling for gyros with a (constant) heading error.
