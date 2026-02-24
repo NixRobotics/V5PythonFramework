@@ -282,9 +282,25 @@ class Logger:
             sum += m.timestamp()
         sum = sum / len(mg._motors)
         return sum
+    
+    def _avg_motor_positions(self, mg: MotorGroup):
+        '''
+        ### INTERNAL Docstring for avg_motor_positions
+        
+        :param mg: Description
+        :type mg: MotorGroup
+        '''
+        num_motors = len(mg._motors)
+        if num_motors == 0:
+            raise RuntimeError("No Motors Found")
+        sum = 0
+        for m in mg._motors:
+            sum += m.position(TURNS)
+        sum = sum / len(mg._motors)
+        return sum
 
     def _read_motor_group(self, motor_group: MotorGroup):
-        return motor_group.position(TURNS), int(self._avg_motor_times(motor_group))
+        return self._avg_motor_positions(motor_group), int(self._avg_motor_times(motor_group))
 
     def _read_motor(self, motor: Motor):
         return motor.position(TURNS), motor.timestamp()

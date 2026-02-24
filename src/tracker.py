@@ -717,6 +717,9 @@ class Tracking:
         timestamps = array.array('i', [0, 0, 0, 0])
         last_timestamps = array.array('i', [0, 0, 0, 0])
 
+        timestamp_warning_printed = False
+        timestamp_error_printed = False
+
         while(True):
             values[0] = self._avg_motor_positions(left_drive)
             values[1] = self._avg_motor_positions(right_drive)
@@ -727,6 +730,17 @@ class Tracking:
             timestamps[1] = self._avg_motor_times(right_drive)
             timestamps[2] = 0
             timestamps[3] = inertial.timestamp()
+
+            min_time = min(timestamps[0], timestamps[1], timestamps[3])
+            max_time = max(timestamps[0], timestamps[1], timestamps[3])
+            time_diff = max_time - min_time
+
+            if (time_diff > 30.0 and not timestamp_error_printed):
+                print("Tracking[motor]: ERROR - timestamps are {}ms apart".format(time_diff))
+                timestamp_error_printed = True
+            if (time_diff > 11.0 and not timestamp_warning_printed):
+                print("Tracking[motor]: Warning - timestamps are {}ms apart".format(time_diff))
+                timestamp_warning_printed = True
 
             updated = False
             for i in range(4):

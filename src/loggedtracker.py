@@ -1,3 +1,7 @@
+# loggedtracker.py
+# WIP
+# Provide a single thread for sampling tracking devices and logging
+
 # Library imports
 from vex import *
 from math import sin, cos, radians, degrees, atan2, sqrt

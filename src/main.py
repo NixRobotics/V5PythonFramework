@@ -32,6 +32,8 @@ r2 = Motor(Ports.PORT4, GearSetting.RATIO_18_1, False)
 right_drive = MotorGroup(r1, r2)
 DRIVETRAIN_WHEEL_SIZE = 316.0
 DRIVETRAIN_GEAR_RATIO = 1.0
+DRIVETRAIN_TRACK_WIDTH = 9.5 * 25.4
+DRIVETRAIN_WHEEL_BASE = 10.0 * 25.4
 
 all_motors = [l1, l2, r1, r2]
 all_motor_names = ["l1", "l2", "r1", "r2"]
@@ -550,11 +552,11 @@ def smart_turn_tests(drivetrain: SmartDriveWrapper, tracker: Tracking):
     # log_motors = all_motors
     log = Logger(brain, log_motors + all_sensors, ["lmg", "rmg", "gyro", "fwd", "side"], data_headers=["x", "y"],
                  data_fields_callback=OnLoggerDataUpdate, time_sec=20, auto_dump=True, file_name="smart_turn_tests")
-    # log.start()
+    log.start()
 
     turn_angles = [22.5, -22.5, 45.0, -45.0, 90.0, -90.0, 180.0, -180.0, 360.0, -360.0]
 
-    drivetrain.set_turn_velocity(100, PERCENT)
+    drivetrain.set_turn_velocity(50, PERCENT)
     # drivetrain.set_turn_constants(Kp=0.5, Ki=0.04, Kd=10.0)
     drivetrain.set_turn_constants(Kp=1.25/2.0, Ki=0.003, Kd=0.095)
     # drivetrain.set_turn_constant(0.5)
@@ -581,8 +583,22 @@ def smart_drive_stop_test(drivetrain: SmartDriveWrapper, tracker: Tracking):
     drivetrain.drive_for(FORWARD, 2.0 * 600.0, MM)
     wait_for_drivetrain_stopped(left_drive, right_drive)
 
+def smart_test_reverse(drivetrain: SmartDriveWrapper, tracker: Tracking):
+    print("smart_drive_to_points_test")
+
+    drivetrain.set_stopping(BrakeType.BRAKE)
+
+    # print_tracker(tracker)
+
+    tracker.set_orientation(Tracking.Orientation(100.0, 100.0, 180.0))
+
+    dist, head = tracker.trajectory_to_point(300.0, 100.0, reverse=True)
+
+    print_tracker(tracker)
+    print("Distance: {:.1f} mm, Heading: {:.2f} deg".format(dist, head))
+
 def smart_drive_tests(tracker: Tracking):
-    drivetrain = SmartDriveWrapper(left_drive, right_drive, inertial, DRIVETRAIN_WHEEL_SIZE, 320, 320, MM, DRIVETRAIN_GEAR_RATIO)
+    drivetrain = SmartDriveWrapper(left_drive, right_drive, inertial, DRIVETRAIN_WHEEL_SIZE, DRIVETRAIN_TRACK_WIDTH, DRIVETRAIN_WHEEL_BASE, MM, DRIVETRAIN_GEAR_RATIO)
 
     drivetrain.set_drive_constants(Kp=0.5, Ki=0.01, Kd=0.0)
     drivetrain.set_drive_velocity(75, PERCENT)
@@ -595,9 +611,10 @@ def smart_drive_tests(tracker: Tracking):
     drivetrain.set_heading_lock_constants(Kp=1.25, Ki=0.0, Kd=0.0)
 
     # smart_drive_to_points(drivetrain, tracker)
-    # smart_turn_tests(drivetrain, tracker)
+    smart_turn_tests(drivetrain, tracker)
     # smart_drive_to_points_test(drivetrain, tracker)
-    smart_drive_stop_test(drivetrain, tracker)
+    # smart_drive_stop_test(drivetrain, tracker)
+    # smart_test_reverse(drivetrain, tracker)
     
 # ------------------------------------------------------------ #
 # Auton Routines for DriveProxy DriveTrain
@@ -771,6 +788,26 @@ def drive_proxy_tests(tracker: Tracking):
     dp_drive_to_points_long(drive_train, tracker)
 
 # ------------------------------------------------------------ #
+# Auton Routines DriveTrain Base Class
+#
+# ------------------------------------------------------------ #
+
+def drivetrain_tests():
+    drivetrain = DriveTrain(left_drive, right_drive, DRIVETRAIN_WHEEL_SIZE, DRIVETRAIN_TRACK_WIDTH, DRIVETRAIN_WHEEL_BASE, MM, DRIVETRAIN_GEAR_RATIO)
+    drivetrain.set_stopping(BrakeType.BRAKE)
+    log_motors = [left_drive, right_drive]
+    log = Logger(brain, log_motors + all_sensors, ["lmg", "rmg", "gyro", "fwd", "side"],
+                 time_sec=15, auto_dump=True, file_name="drivetrain_tests")
+    log.start()
+    left_drive.spin(FORWARD, 50, PERCENT)
+    right_drive.spin(FORWARD, 33, PERCENT)
+    while inertial.rotation() < 90.0:
+        wait(10, MSEC)
+    left_drive.stop(BRAKE)
+    right_drive.stop(BRAKE)
+
+
+# ------------------------------------------------------------ #
 # Main Autonomous Function
 # ------------------------------------------------------------ #
 
@@ -792,8 +829,9 @@ def autonomous():
         raise RuntimeError("Tracker not initialized")
     tracker.enable()
 
+    drivetrain_tests()
     # drive_proxy_tests(tracker)
-    smart_drive_tests(tracker)
+    # smart_drive_tests(tracker)
 
     free = gc.mem_free() # type: ignore
     print(free)

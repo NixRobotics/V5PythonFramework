@@ -2,6 +2,8 @@ class PID:
     '''
     ### "Simple" PID controller class for demonstration purposes only
 
+    See https://github.com/tekdemo/MiniPID
+
     This provides the basic functionality required by most controllers including feedforward
 
     The output range should be in the range [-1.0, 1.0]
