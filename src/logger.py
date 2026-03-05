@@ -15,7 +15,13 @@ class Logger:
 
     DEFAULT_LENGTH = 1000
 
-    def __init__(self, brain: Brain, devices: List, headers: List, data_headers: List | None = None, data_fields_callback: Callable | None = None, max_length: int = -1, time_sec: int = -1, auto_dump: bool = False, file_name: str = "log"):
+    def __init__(self,
+                 brain: Brain,
+                 devices: List, headers: List,
+                 data_headers: List | None = None, data_fields_callback: Callable | None = None,
+                 max_length: int = -1, time_sec: int = -1,
+                 rate_ms: int = 10,
+                 auto_dump: bool = False, file_name: str = "log"):
         '''
         ### Smart data capture for VEX devices and optional user-defined data fields.
 
@@ -83,6 +89,9 @@ class Logger:
         :param (optional) time_sec: Optional maximum time in seconds to log data. Default is -1 (disabled).
             If neither max_length nor time_sec is specified, the default length of 1000 entries is used which corresponds to approximately 10 seconds of data
         :type time_sec: int
+        :param (optional) rate_ms: Optional sample rate. Default is 10ms
+            Sample will only be entered when a change in timestamp is detected for any device. Typically set this to 5ms or 10ms
+        :type rate_ms: int
         :param auto_dump: If True, this will automatically dump the logged data to the SD card when the internal buffer is full or time limit is reached
         :type auto_dump: bool
         :param file_name: Optional base file name to use when dumping log data to SD card.
@@ -127,6 +136,7 @@ class Logger:
         if brain is None or not isinstance(brain, Brain):
             raise ValueError("Logger: A valid Brain instance must be provided")
         
+        self.rate_ms = rate_ms
         self.devices = devices
         self.headers = headers
         self.data_headers = data_headers
@@ -139,7 +149,7 @@ class Logger:
         if time_sec > 0:
             self.timeout = time_sec * 1000  # Convert to milliseconds
             if max_length <= 0:
-                self.rows = self.timeout // 10  # Assuming new logging value every 10ms
+                self.rows = self.timeout // self.rate_ms  # Assuming new logging value every rate_ms
         else:
             self.timeout = -1
 
@@ -318,47 +328,55 @@ class Logger:
         values = [0.0] * len(self.devices)
         timestamps = [0] * len(self.devices)
         last_timestamps = [0] * len(self.devices)
+        overrun = False # buffer overrun in case when timeout is used and buffer limit is reached
 
         while self.enabled:
+            # if timeout is set, wait for it to expire regardless of buffer limit (logging stops when overrun is reached regardless)
             if self.timeout > 0 and (timer.time(MSEC) - start_time) >= self.timeout:
                 self.enabled = False
                 break
 
             updated = False
 
-            for i in range(self.cols):
-                if self.types[i] == Logger.MOTOR:
-                    values[i], timestamps[i] = self._read_motor(self.devices[i])
-                elif self.types[i] == Logger.INERTIAL:
-                    values[i], timestamps[i] = self._read_inertial(self.devices[i])
-                elif self.types[i] == Logger.ROTATION:
-                    values[i], timestamps[i] = self._read_rotation(self.devices[i])
-                elif self.types[i] == Logger.MOTOR_GROUP:
-                    values[i], timestamps[i] = self._read_motor_group(self.devices[i])
-                if timestamps[i] != last_timestamps[i]:
-                    updated = True
-
-            if updated:
+            if not overrun:
                 for i in range(self.cols):
-                    self.vdata[self.index * self.cols + i] = values[i]
-                    self.tdata[self.index * self.cols + i] = timestamps[i]
-                    last_timestamps[i] = timestamps[i]
+                    if self.types[i] == Logger.MOTOR:
+                        values[i], timestamps[i] = self._read_motor(self.devices[i])
+                    elif self.types[i] == Logger.INERTIAL:
+                        values[i], timestamps[i] = self._read_inertial(self.devices[i])
+                    elif self.types[i] == Logger.ROTATION:
+                        values[i], timestamps[i] = self._read_rotation(self.devices[i])
+                    elif self.types[i] == Logger.MOTOR_GROUP:
+                        values[i], timestamps[i] = self._read_motor_group(self.devices[i])
+                    if timestamps[i] != last_timestamps[i]:
+                        updated = True
 
-                if self.dfcols > 0 and self.data_fields_callback is not None:
-                    df_values = self.data_fields_callback()
-                    # check we got valid values back
-                    if (df_values is None) or (len(df_values) != self.dfcols):
-                        raise RuntimeError("Logger: data_fields_callback did not return expected number of values")
-                    for j in range(self.dfcols):
-                        self.dfdata[self.index * self.dfcols + j] = df_values[j]
+                if updated:
+                    for i in range(self.cols):
+                        self.vdata[self.index * self.cols + i] = values[i]
+                        self.tdata[self.index * self.cols + i] = timestamps[i]
+                        last_timestamps[i] = timestamps[i]
 
-                if self.index < self.rows - 1:
-                    self.index = (self.index + 1) % self.rows
-                else:
-                    self.enabled = False
-                    break
+                    if self.dfcols > 0 and self.data_fields_callback is not None:
+                        df_values = self.data_fields_callback()
+                        # check we got valid values back
+                        if (df_values is None) or (len(df_values) != self.dfcols):
+                            raise RuntimeError("Logger: data_fields_callback did not return expected number of values")
+                        for j in range(self.dfcols):
+                            self.dfdata[self.index * self.dfcols + j] = df_values[j]
 
-            wait(5, MSEC)  # Check every 5ms
+                    # have not overrun buffer, so move to next index
+                    if self.index < self.rows - 1:
+                        self.index = (self.index + 1) % self.rows
+                    # buffer overrun and no timeout, so stop logging now
+                    elif self.timeout <= 0:
+                        self.enabled = False
+                        break
+                    # buffer overrun and timeout set, stop logging date, but wait for timeout to expire before dumping data to SD card
+                    else:
+                        overrun = True
+
+            wait(self.rate_ms, MSEC)  # Check every rate_ms (e.g. 5ms or 10ms)
 
         if self.auto_dump:
             self._dump(self.file_name)

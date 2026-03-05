@@ -898,9 +898,11 @@ class Logger:
     '''
 
     def __init__(self,
-                 brain: Brain, devices: List, headers: List,
+                 brain: Brain,
+                 devices: List, headers: List,
                  data_headers: List | None = None, data_fields_callback: Callable | None = None,
                  max_length: int = -1, time_sec: int = -1,
+                 rate_ms: int = 10,
                  auto_dump: bool = False, file_name: str = "log"):
         '''
         ### Smart data capture for VEX devices and optional user-defined data fields.
@@ -969,6 +971,9 @@ class Logger:
         :param (optional) time_sec: Optional maximum time in seconds to log data. Default is -1 (disabled).
             If neither max_length nor time_sec is specified, the default length of 1000 entries is used which corresponds to approximately 10 seconds of data
         :type time_sec: int
+        :param (optional) rate_ms: Optional sample rate. Default is 10ms
+            Sample will only be entered when a change in timestamp is detected for any device. Typically set this to 5ms or 10ms
+        :type rate_ms: int
         :param auto_dump: If True, this will automatically dump the logged data to the SD card when the internal buffer is full or time limit is reached
         :type auto_dump: bool
         :param file_name: Optional base file name to use when dumping log data to SD card.
