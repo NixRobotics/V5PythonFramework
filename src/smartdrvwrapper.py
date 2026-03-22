@@ -272,11 +272,7 @@ class SmartDriveWrapper(SmartDrive):
         if units_v != PercentUnits.PERCENT and units_v != VelocityUnits.PERCENT:
             raise ValueError("SmartDriveWrapper.turn_to_heading(): Only PERCENT supported for units_v")
 
-        if velocity is not None:
-            self.dp.set_turn_velocity(velocity, units_v)
-        else:
-            self.dp.set_turn_velocity(self._turn_velocity, PercentUnits.PERCENT)
-        return self.dp.turn_to_heading(heading, settle_error=None, timeout=None, wait=wait, use_voltage=(mode==self.TurnMode.VOLTAGE))
+        return self.dp.turn_to_heading(heading, velocity=velocity, settle_error=None, timeout=None, wait=wait, use_voltage=(mode==self.TurnMode.VOLTAGE))
     
     def turn_to_rotation(self, rotation, units=RotationUnits.DEG,
                          velocity=None, units_v:  VelocityUnits.VelocityUnits | PercentUnits.PercentUnits = VelocityUnits.PERCENT,
@@ -302,11 +298,7 @@ class SmartDriveWrapper(SmartDrive):
         if units_v != PercentUnits.PERCENT and units_v != VelocityUnits.PERCENT:
             raise ValueError("SmartDriveWrapper.turn_to_heading(): Only PERCENT supported for units_v")
 
-        if velocity is not None:
-            self.dp.set_turn_velocity(velocity, units_v)
-        else:
-            self.dp.set_turn_velocity(self._turn_velocity, PercentUnits.PERCENT)
-        return self.dp.turn_to_rotation(rotation, settle_error=None, timeout=None, wait=wait, use_voltage=(mode==self.TurnMode.VOLTAGE))
+        return self.dp.turn_to_rotation(rotation, velocity=velocity, settle_error=None, timeout=None, wait=wait, use_voltage=(mode==self.TurnMode.VOLTAGE))
 
     def turn_for(self, direction, angle, units = RotationUnits.DEG,
                  velocity=None, units_v: VelocityUnits.VelocityUnits | PercentUnits.PercentUnits = VelocityUnits.PERCENT,
@@ -332,11 +324,7 @@ class SmartDriveWrapper(SmartDrive):
         if units_v != PercentUnits.PERCENT and units_v != VelocityUnits.PERCENT:
             raise ValueError("SmartDriveWrapper.turn_to_heading(): Only PERCENT supported for units_v")
 
-        if velocity is not None:
-            self.dp.set_turn_velocity(velocity, units_v)
-        else:
-            self.dp.set_turn_velocity(self._turn_velocity, PercentUnits.PERCENT)
-        return self.dp.turn_for(direction, angle, units, settle_error=None, timeout=None, wait=wait, use_voltage=(mode==self.TurnMode.VOLTAGE))
+        return self.dp.turn_for(direction, angle, units, velocity=velocity, settle_error=None, timeout=None, wait=wait, use_voltage=(mode==self.TurnMode.VOLTAGE))
 
     def turn(self, direction, velocity=None, units:VelocityPercentUnits=VelocityUnits.RPM):
         '''
@@ -359,14 +347,13 @@ class SmartDriveWrapper(SmartDrive):
         :param distance: Distnace in MM the robot should drive. Providing negative distance will drive in the opposite direction specified by the direction parameter
         :param (optional) units: Only MM supported
         :param velocity: Description
-        :param units_v: Description
+        :param units_v: Only PERCENT supported
         :type units_v: VelocityUnits.VelocityUnits | PercentUnits.PercentUnits
         :param wait: Description
         :return: Description
         :rtype: Any | Literal[True]
         '''
-        if velocity is not None: raise NotImplementedError("SmartDriveWrapper.drive_for(): velocity parameter not supported, use set_drive_velocity() instead")
-        return self.dp.drive_for(direction, distance, units, heading=None, settle_error=None, timeout=None, wait=wait)
+        return self.dp.drive_for(direction, distance, units, velocity=velocity, heading=None, settle_error=None, timeout=None, wait=wait)
         #return super().drive_for(direction, distance, units, velocity, units_v, wait)
 
     def drive_straight_for(self, direction, distance, units = DistanceUnits.MM,
@@ -380,7 +367,7 @@ class SmartDriveWrapper(SmartDrive):
         :param distance: Description
         :param units: Description
         :param velocity: Description
-        :param units_v: Description
+        :param units_v: Only PERCENT supported
         :type units_v: VelocityUnits.VelocityUnits | PercentUnits.PercentUnits
         :param heading: Description
         :param units_h: Description
@@ -388,12 +375,11 @@ class SmartDriveWrapper(SmartDrive):
         :return: Description
         :rtype: Any | Literal[True]
         '''
-        if velocity is not None: raise NotImplementedError("SmartDriveWrapper.drive_for(): velocity parameter not supported, use set_drive_velocity() instead")
         if velocity is not None and units_v != VelocityUnits.PERCENT and units_v != PercentUnits.PERCENT:
             raise ValueError("SmartDriveWrapper.drive_straight_for(): Only PERCENT supported for units_v")
         if heading is not None and units_h != RotationUnits.DEG:
             raise ValueError("SmartDriveWrapper.drive_straight_for(): Only DEGREES supported for units_h")
-        return self.dp.drive_for(direction, distance, units, heading=heading, settle_error=None, timeout=None, wait=wait)
+        return self.dp.drive_for(direction, distance, units, velocity=velocity, heading=heading, settle_error=None, timeout=None, wait=wait)
 
     def drive_to_point(self, x: float, y: float, direction, orientation_callback: Callable, turn_limit: float = 0.0, wait = True):
         '''
@@ -418,7 +404,7 @@ class SmartDriveWrapper(SmartDrive):
         :return: Time for command to complete in MS (if wait=True)
         :rtype: Any | Literal[False]
         '''
-        return self.dp.drive_to_point(x, y, direction, orientation_callback, settle_error = None, turn_limit = turn_limit, timeout = None, wait = wait)
+        return self.dp.drive_to_point(x, y, direction, orientation_callback, velocity = None, settle_error = None, turn_limit = turn_limit, timeout = None, wait = wait)
 
     def drive(self, direction, velocity=None, units:VelocityPercentUnits=VelocityUnits.RPM):
         '''
@@ -435,7 +421,7 @@ class SmartDriveWrapper(SmartDrive):
 
     def is_moving(self):
         '''
-        ### DEPRECATED: Use id_done() 
+        ### DEPRECATED: Use is_done() 
         '''
         raise NotImplementedError("is_moving() not supported")
         # return self.is_done()

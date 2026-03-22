@@ -51,6 +51,7 @@ class DriveProxy:
 
         self.stop_mode = BrakeType.COAST
 
+        self.turn_velocity = DriveProxy.MAX_PERCENT # percent
         self.drive_velocity = DriveProxy.MAX_PERCENT # percent
         self.min_drive_velocity = 0.0 # percent
 
@@ -139,6 +140,7 @@ class DriveProxy:
     def set_turn_velocity(self, velocity, unit):
         if (unit is not PercentUnits.PERCENT): raise ValueError("Units must be PERCENT")
         self._concurrency_check()
+        self.turn_velocity = velocity
         self.turn_pid_constants.max_output = velocity / 100.0
         self.heading_lock_pid_constants.max_output = velocity / 100.0
         return True
@@ -250,29 +252,29 @@ class DriveProxy:
             is_crossed = (target_y-current_y) * sin(radians(target_angle)) <= -(target_x-current_x) * cos(radians(target_angle))
         return is_crossed
 
-    def turn_to_heading(self, heading, settle_error = None, timeout = None, wait = True, use_voltage = True):
+    def turn_to_heading(self, heading, velocity = None, settle_error = None, timeout = None, wait = True, use_voltage = True):
         angle = self.inertial.calc_angle_to_heading(heading)
-        return self.turn_for(RIGHT, angle, DEGREES, settle_error=settle_error, timeout=timeout, wait=wait, use_voltage=use_voltage)
+        return self.turn_for(RIGHT, angle, DEGREES, velocity=velocity, settle_error=settle_error, timeout=timeout, wait=wait, use_voltage=use_voltage)
 
-    def turn_to_rotation(self, rotation, settle_error = None, timeout = None, wait = True, use_voltage = True):
+    def turn_to_rotation(self, rotation, velocity = None, settle_error = None, timeout = None, wait = True, use_voltage = True):
         angle = self.inertial.calc_angle_to_rotation(rotation)
-        return self.turn_for(RIGHT, angle, DEGREES, settle_error=settle_error, timeout=timeout, wait=wait, use_voltage=use_voltage)
+        return self.turn_for(RIGHT, angle, DEGREES, velocity=velocity, settle_error=settle_error, timeout=timeout, wait=wait, use_voltage=use_voltage)
 
-    def _turn_for(self, direction, angle, unit, settle_error, timeout, use_voltage):
+    def _turn_for(self, direction, angle, unit, velocity, settle_error, timeout, use_voltage):
         '''
         ### INTERNAL
         '''
-        if unit is not RotationUnits.DEG: raise NotImplementedError("Units must be MM")
+        if unit is not RotationUnits.DEG: raise NotImplementedError("Units must be DEGREES")
         self._command_running = True
         timer = Timer()
 
         if not self.use_voltage or not use_voltage:
             use_voltage = False
 
+        # instantiate turn PID, allow for per call velocity,settle_threshold and timeout, useful if we need to vary accuracy particularly when chaining motions
         turn_pid = PID(self.turn_pid_constants.Kp, self.turn_pid_constants.Ki, self.turn_pid_constants.Kd)
-        turn_pid.set_output_limit(self.turn_pid_constants.max_output) # limit output to defined power
         turn_pid.set_output_ramp_limit(self.turn_pid_constants.max_ramp)
-        # allow for per call settle_threshold and timeout, useful if we need to vary accuracy particularly when chaining motions
+        turn_pid.set_output_limit(self.turn_pid_constants.max_output if velocity is None else velocity / 100.0) # limit output to defined power - normalized to 1.0
         turn_pid.set_settle_threshold(self.turn_pid_constants.settle_error if settle_error is None else settle_error) # settle threshold in degrees
         self._this_timeout = self.default_timeout if timeout is None else timeout
         turn_pid.set_timeout(self._this_timeout)
@@ -301,22 +303,22 @@ class DriveProxy:
         if (self._was_timeout): self._timeout_notifier.broadcast()
         return timer.time()
     
-    def _turn_for_thread(self, args1, arg2, arg3, arg4, arg5, arg6):
+    def _turn_for_thread(self, arg1, arg2, arg3, arg4, arg5, arg6, arg7):
         '''
         ### INTERNAL
         '''
-        self._turn_for(args1, arg2, arg3, arg4, arg5, arg6)
+        self._turn_for(arg1, arg2, arg3, arg4, arg5, arg6, arg7)
     
-    def turn_for(self, direction, angle, unit, settle_error = None, timeout = None, wait = True, use_voltage = True):
+    def turn_for(self, direction, angle, unit, velocity = None, settle_error = None, timeout = None, wait = True, use_voltage = True):
         self._concurrency_check()
         self._command_running = True
         if wait:
-            return self._turn_for(direction, angle, unit, settle_error, timeout, use_voltage)
+            return self._turn_for(direction, angle, unit, velocity, settle_error, timeout, use_voltage)
         else:
-            self._worker_thread = Thread(self._turn_for_thread, (direction, angle, unit, settle_error, timeout, use_voltage))
+            self._worker_thread = Thread(self._turn_for_thread, (direction, angle, unit, velocity, settle_error, timeout, use_voltage))
             return 0
 
-    def _drive_for(self, direction, distance, unit, heading, settle_error, timeout):
+    def _drive_for(self, direction, distance, unit, velocity, heading, settle_error, timeout):
         '''
         ### INTERNAL
         '''
@@ -325,7 +327,7 @@ class DriveProxy:
         timer = Timer()
 
         drive_pid = PID(self.drive_pid_constants.Kp, self.drive_pid_constants.Ki, self.drive_pid_constants.Kd)
-        drive_pid.set_output_limit(self.drive_pid_constants.max_output) # limit output to 50% power
+        drive_pid.set_output_limit(self.drive_pid_constants.max_output if velocity is None else velocity / 100.0) # limit output power - normalized to 1.0
         drive_pid.set_output_ramp_limit(self.drive_pid_constants.max_ramp)
         # see if we want to override settle and timeout
         # print("Drive Settle Error: ", self.drive_pid_constants.settle_error)
@@ -336,7 +338,7 @@ class DriveProxy:
 
         if (heading is not None):
             turn_pid = PID(self.heading_lock_pid_constants.Kp, self.heading_lock_pid_constants.Ki, self.heading_lock_pid_constants.Kd)
-            turn_pid.set_output_limit(self.heading_lock_pid_constants.max_output) # limit output to 50% power
+            turn_pid.set_output_limit(self.heading_lock_pid_constants.max_output) # limit output power - normalized to 1.0
             turn_pid.set_settle_time(0.0)
             turn_pid.set_timeout(0.0)
 
@@ -390,22 +392,22 @@ class DriveProxy:
         if (self._was_timeout): self._timeout_notifier.broadcast()
         return timer.time()
 
-    def _drive_for_thread(self, args1, arg2, arg3, arg4, arg5, arg6):
+    def _drive_for_thread(self, arg1, arg2, arg3, arg4, arg5, arg6, arg7):
         '''
         ### INTERNAL
         '''
-        self._drive_for(args1, arg2, arg3, arg4, arg5, arg6)
+        self._drive_for(arg1, arg2, arg3, arg4, arg5, arg6, arg7)
     
-    def drive_for(self, direction, distance, unit, heading = None, settle_error = None, timeout = None, wait = True):
+    def drive_for(self, direction, distance, unit, velocity = None, heading = None, settle_error = None, timeout = None, wait = True):
         self._concurrency_check()
         self._command_running = True
         if wait:
-            return self._drive_for(direction, distance, unit, heading, settle_error, timeout)
+            return self._drive_for(direction, distance, unit, velocity, heading, settle_error, timeout)
         else:
-            self._worker_thread = Thread(self._drive_for_thread, (direction, distance, unit, heading, settle_error, timeout))
+            self._worker_thread = Thread(self._drive_for_thread, (direction, distance, unit, velocity, heading, settle_error, timeout))
             return 0
 
-    def _drive_to_point(self, x, y, direction, orientation_callback, settle_error, turn_limit, timeout):
+    def _drive_to_point(self, x, y, direction, orientation_callback, velocity, settle_error, turn_limit, timeout):
             '''
             ### INTERNAL
             '''
@@ -413,8 +415,9 @@ class DriveProxy:
             timer = Timer()
 
             # Initialize drive PID
+            # TODO: Handle moving robot
             drive_pid = PID(self.drive_pid_constants.Kp, self.drive_pid_constants.Ki, self.drive_pid_constants.Kd)
-            drive_pid.set_output_limit(self.drive_pid_constants.max_output) # limit output to 50% power
+            drive_pid.set_output_limit(self.drive_pid_constants.max_output if velocity is None else velocity / 100.0) # limit output power - normalized to 1.0
             drive_pid.set_output_ramp_limit(self.drive_pid_constants.max_ramp)
             # see if we want to override settle and timeout
             if settle_error is None: drive_settle_error = self.drive_pid_constants.settle_error
@@ -511,13 +514,13 @@ class DriveProxy:
             if (self._was_timeout): self._timeout_notifier.broadcast()
             return timer.time()
 
-    def _drive_to_point_thread(self, x, y, direction, orientation_callback, settle_error, turn_limit, timeout):
+    def _drive_to_point_thread(self, x, y, direction, orientation_callback, velocity, settle_error, turn_limit, timeout):
         '''
         ### INTERNAL
         '''
-        self._drive_to_point(x, y, direction, orientation_callback, settle_error, turn_limit, timeout)
+        self._drive_to_point(x, y, direction, orientation_callback, velocity, settle_error, turn_limit, timeout)
 
-    def drive_to_point(self, x: float, y: float, direction, orientation_callback: Callable, settle_error: float | None = None, turn_limit: float | None = None, timeout: float | None = None, wait: bool = True):
+    def drive_to_point(self, x: float, y: float, direction, orientation_callback: Callable, velocity: float | None = None, settle_error: float | None = None, turn_limit: float | None = None, timeout: float | None = None, wait: bool = True):
         '''
         Docstring for drive_to_point
         
@@ -528,6 +531,8 @@ class DriveProxy:
         :param direction: Description
         :param orientation_callback: Description
         :type orientation_callback: Callable
+        :param velocity: Description
+        :type velocity: float | None
         :param settle_error: Description
         :type settle_error: float | None
         :param turn_limit: Description
@@ -540,9 +545,9 @@ class DriveProxy:
         self._concurrency_check()
         self._command_running = True
         if wait:
-            return self._drive_to_point(x, y, direction, orientation_callback, settle_error, turn_limit, timeout)
+            return self._drive_to_point(x, y, direction, orientation_callback, velocity, settle_error, turn_limit, timeout)
         else:
-            self._worker_thread = Thread(self._drive_to_point_thread, (x, y, direction, orientation_callback, settle_error, turn_limit, timeout))
+            self._worker_thread = Thread(self._drive_to_point_thread, (x, y, direction, orientation_callback, velocity, settle_error, turn_limit, timeout))
             return 0
 
 

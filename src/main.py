@@ -121,7 +121,7 @@ def initialize_odom_tracker():
     ODOMETRY_FWD_OFFSET = 0.0316 * 25.4
     ODOMETRY_FWD_GEAR_RATIO = 1.0
     ODOMETRY_STRAFE_SIZE = 157.38
-    ODOMETRY_STRAFE_OFFSET = 4.526 * 25.4
+    ODOMETRY_STRAFE_OFFSET = 115.0 # from pivot turn tests, this is more like 117.5mm
     ODOMETRY_STRAFE_GEAR_RATIO = 1.0
 
     tracker_configuration = Tracking.Configuration(
