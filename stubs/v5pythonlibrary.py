@@ -1039,6 +1039,35 @@ class Logger:
         '''
 
 # ------------------------------------------------------------------------------ #
+# XYPlotter class
+# ------------------------------------------------------------------------------ #
+
+class XYPlotter:
+    def __init__(self):
+        '''
+        Docstring for XYPlotter
+
+        Plot up to 3 x/y data series on the Brain's LCD screen
+        '''
+        
+        pass
+
+    def add_data_point_series1(self, x, y):
+        pass
+
+    def add_data_point_series2(self, x, y):
+        pass
+
+    def add_data_point_series3(self, x, y):
+        pass
+
+    def clear_data(self):
+        pass
+
+    def draw_plot(self, screen: Brain.Lcd):
+        pass
+
+# ------------------------------------------------------------------------------ #
 # PreAutonUI class
 # ------------------------------------------------------------------------------ #
 

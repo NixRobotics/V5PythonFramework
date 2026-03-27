@@ -6,3 +6,4 @@ from smartdrvwrapper import SmartDriveWrapper
 from drivercontrol import DriverControl
 from autonhelpers import *
 from motormonitor import MotorMonitor
+from plotter import XYPlotter

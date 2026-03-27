@@ -877,17 +877,28 @@ def user_control():
         raise RuntimeError("Tracker not initialized")
     tracker.enable()
 
+    plotter = XYPlotter()
+    plotted = False
+
     drive_control = DriverControl(left_drive, right_drive, inertial)
     drive_control.set_mode(follow_heading_Kp=1.5)
     drive_control.set_mode(enable_drive_straight=True, enable_heading_lock=False, follow_heading=0.0)
 
-    loop_count = 200
+    loop_count = 500
     while True:
         drive_control.user_drivetrain(controller_1.axis3.position(), controller_1.axis1.position())
         loop_count -= 1
         if (loop_count <= 0):
             print_tracker(tracker)
-            loop_count = 200
+            if not plotted:
+                plotter.draw_plot(brain.screen)
+                plotted = True
+            loop_count = 500
+
+        if not plotted:
+            tracker_orientation = tracker.get_orientation()
+            plotter.add_data_point_series1(tracker_orientation.x, tracker_orientation.y)
+
         wait(10, MSEC)
 
 brain.screen.clear_screen()
