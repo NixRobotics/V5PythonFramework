@@ -100,7 +100,8 @@ class Tracking:
         # theta reflects the true rotation of the robot not the uncorrected gyro version
         # We also set reset the gyro reading to match our heading. The set_sensor_heading() call will apply the gyro scaling factor
 
-        self.inertial = devices[2] # type: InertialWrapper
+        # Inertial sensor is always last in list
+        self.inertial = devices[-1] # type: InertialWrapper
         if self.inertial is None:
             raise Exception("ERROR: INERTIAL SENSOR MUST BE PRESENT ON FIRST INITIALIZATION")
 
@@ -396,76 +397,6 @@ class Tracking:
         self.previous_right_position = right_position
         self.previous_side_position = side_position
         self.previous_theta = theta
-    
-    def _calc_timestep_arc_chord_fwd_only(self, x, y, theta, delta_forward, delta_side, delta_theta):
-        '''
-        ### INTERNAL
-
-        x, y, delta_forward, delta_side in MM
-
-        theta, delta_theta in radians
-        '''
-
-        # local deltas
-        if (delta_theta == 0.0):
-            # no turn - use simple deltas
-            delta_local_x = delta_forward
-            to_global_rotation_angle = theta
-        else:
-            # robot turning
-            # calculate radius of movement for forward and side wheels
-            r_linear = -self.fwd_offset + (delta_forward / delta_theta) # mm
-
-            # calculate chord distances using chord length = 2 * r * sin(theta / 2)
-            # pre-rotate by half the turn angle so we have only distance along one axis for each
-            # when we rotate to global frame we need to account for this half-angle rotation
-            to_global_rotation_angle = theta + delta_theta / 2
-            delta_local_x = r_linear * 2.0 * sin(delta_theta / 2.0)
-
-        # rotate to global
-        delta_global_x = delta_local_x * cos(to_global_rotation_angle)
-        delta_global_y = delta_local_x * sin(to_global_rotation_angle)
-
-        return (x + delta_global_x, y + delta_global_y, theta + delta_theta)
-
-    def _update_location_fwd_only(self, values: array.array, timestamps: array.array):
-        '''
-        ### INTERNAL
-
-        ### Arguments
-            values: array of 4 values: left(REV), right(REV), side(REV), theta(RADIANS)
-            timestamps: array of 4 timestamps: left(MS), right(MS), side(MS), theta(MS)
-        '''
-        if self._enable_resampling:
-            resampled = self._resample(values, timestamps)
-        else:
-            resampled = values
-
-        # Unpack inputs
-        left_position = resampled[0]
-        right_position = resampled[1]
-        theta = resampled[3]
-
-        # position here is the rotoation of th wheel so needs to be multiplied by any gear ratio if present
-        left_position *= self.fwd_gear_ratio
-        right_position *= self.fwd_gear_ratio
-
-        delta_left = left_position - self.previous_left_position
-        delta_right = right_position - self.previous_right_position
-        delta_theta = theta - self.previous_theta
-
-        # delta_forward and delta_strafe will be the piecewise motion of this robot in this timestop, for forward and sideways/strafe in mm
-        if self.fwd_is_odom:
-            delta_forward = self.fwd_wheel_size * delta_left
-        else:
-            delta_forward = self.fwd_wheel_size * (delta_left + delta_right) / 2.0
-
-        self.x, self.y, _ = self._calc_timestep_arc_chord_fwd_only(self.x, self.y, self.theta, delta_forward, 0.0, delta_theta)
-        self.theta = theta # always use gyro theta
-
-        self.previous_left_position = left_position
-        self.previous_right_position = right_position
-        self.previous_theta = theta
 
     def get_orientation(self):
         '''
@@ -689,10 +620,7 @@ class Tracking:
                                             Tracking.EncoderValues(timestamps[0], timestamps[1], timestamps[2], timestamps[3]))
 
             if not self._first_run:
-                if self.side_wheel_size == 0.0:
-                    self._update_location_fwd_only(values, timestamps)
-                else:
-                    self._update_location(values, timestamps)
+                self._update_location(values, timestamps)
 
             self._perf_on_end_loop()
 
@@ -700,7 +628,7 @@ class Tracking:
         else:
             self._first_run = True
 
-    def _track_motors(self, left_drive: MotorGroup, right_drive: MotorGroup, inertial: InertialWrapper):
+    def _track_motors(self, left_drive: MotorGroup, right_drive: MotorGroup, strafe_drive: MotorGroup | None, inertial: InertialWrapper):
         '''
         ### INTERNAL Docstring for _track_motors
         
@@ -708,6 +636,8 @@ class Tracking:
         :type left_drive: MotorGroup
         :param right_drive: Description
         :type right_drive: MotorGroup
+        :param strafe_drive: Description
+        :type strafe_drive: MotorGroup
         :param inertial: Description
         :type inertial: InertialWrapper
         '''
@@ -723,12 +653,12 @@ class Tracking:
         while(True):
             values[0] = self._avg_motor_positions(left_drive)
             values[1] = self._avg_motor_positions(right_drive)
-            values[2] = 0.0
+            values[2] = 0.0 if strafe_drive is None else self._avg_motor_positions(strafe_drive)
             values[3] = Tracking.gyro_theta(inertial)
 
             timestamps[0] = self._avg_motor_times(left_drive)
             timestamps[1] = self._avg_motor_times(right_drive)
-            timestamps[2] = 0
+            timestamps[2] = 0 if strafe_drive is None else self._avg_motor_times(strafe_drive)
             timestamps[3] = inertial.timestamp()
 
             min_time = min(timestamps[0], timestamps[1], timestamps[3])
@@ -751,13 +681,15 @@ class Tracking:
     
             wait(self.timestep, MSEC)
 
-    def _track_odometry(self, rotation_fwd: Rotation, rotation_side: Rotation, inertial: InertialWrapper):
+    def _track_odometry(self, rotation_left: Rotation, rotation_right: Rotation | None, rotation_side: Rotation, inertial: InertialWrapper):
         '''
         ### INTERNAL Docstring for _track_odometry
         
         :param self: Description
-        :param rotation_fwd: Description
-        :type rotation_fwd: Rotation
+        :param rotation_left: Description
+        :type rotation_left: Rotation
+        :param rotation_right: Description
+        :type rotation_right: Rotation
         :param rotation_side: Description
         :type rotation_side: Rotation
         :param inertial: Description
@@ -770,13 +702,13 @@ class Tracking:
         last_timestamps = array.array('i', [0, 0, 0, 0])
 
         while(True):
-            values[0] = rotation_fwd.position(RotationUnits.REV)
-            values[1] = 0.0
+            values[0] = rotation_left.position(RotationUnits.REV)
+            values[1] = 0.0 if rotation_right is None else rotation_right.position(RotationUnits.REV)
             values[2] = rotation_side.position(RotationUnits.REV)
             values[3] = Tracking.gyro_theta(inertial)
 
-            timestamps[0] = rotation_fwd.timestamp()
-            timestamps[1] = 0
+            timestamps[0] = rotation_left.timestamp()
+            timestamps[1] = 0 if rotation_right is None else rotation_right.timestamp()
             timestamps[2] = rotation_side.timestamp()
             timestamps[3] = inertial.timestamp()
 
@@ -798,16 +730,22 @@ class Tracking:
         :param devices: Description
         :param unused: Description
         '''
-        if len(devices) != 3:
-            print("missing prequisite number of devices (3)")
+        if len(devices) < 3 or len(devices) > 4:
+            print("missing prequisite number of devices (3 or 4)")
             return
         
         wait(10, MSEC)
 
         if not self.fwd_is_odom:
-            self._track_motors(devices[0], devices[1], devices[2])
+            if len(devices) == 4:
+                self._track_motors(devices[0], devices[1], devices[2], devices[3])
+            else:
+                self._track_motors(devices[0], devices[1], None, devices[2])
         else:
-            self._track_odometry(devices[0], devices[1], devices[2])
+            if len(devices) == 4:
+                self._track_odometry(devices[0], devices[1], devices[2], devices[3])
+            else:
+                self._track_odometry(devices[0], None, devices[1], devices[2])
 
     def start_tracker(self, devices):
         '''
