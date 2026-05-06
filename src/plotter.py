@@ -1,7 +1,7 @@
 from vex import *
 
 class XYPlotter:
-    def __init__(self):
+    def __init__(self, min_x=None, max_x=None, min_y=None, max_y=None):
         # Screen dimensions and margins
         self.screen_width = 480
         self.screen_height = 240
@@ -16,10 +16,11 @@ class XYPlotter:
         self.s3x, self.s3y = [], []
 
         # Data limits
-        self.min_x = 0
-        self.max_x = 100
-        self.min_y = 0
-        self.max_y = 100
+        self.auto_scale = True if min_x is None else False
+        self.min_x = 0 if min_x is None else min_x
+        self.max_x = 100 if max_x is None else max_x
+        self.min_y = 0 if min_y is None else min_y
+        self.max_y = 100 if max_y is None else max_y
 
     # -----------------------------
     # Data input
@@ -72,6 +73,9 @@ class XYPlotter:
     # Scaling and limits
     # -----------------------------
     def update_limits(self):
+        if not self.auto_scale:
+            return
+        
         xs = self.s1x + self.s2x + self.s3x
         ys = self.s1y + self.s2y + self.s3y
 

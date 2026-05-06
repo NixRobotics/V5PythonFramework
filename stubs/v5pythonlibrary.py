@@ -1043,7 +1043,7 @@ class Logger:
 # ------------------------------------------------------------------------------ #
 
 class XYPlotter:
-    def __init__(self):
+    def __init__(self, min_x=None, max_x=None, min_y=None, max_y=None):
         '''
         Docstring for XYPlotter
 

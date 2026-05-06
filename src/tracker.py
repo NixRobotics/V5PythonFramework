@@ -384,10 +384,7 @@ class Tracking:
         delta_theta = theta - self.previous_theta
 
         # delta_forward and delta_strafe will be the piecewise motion of this robot in this timestop, for forward and sideways/strafe in mm
-        if self.fwd_is_odom:
-            delta_forward = self.fwd_wheel_size * delta_left
-        else:
-            delta_forward = self.fwd_wheel_size * (delta_left + delta_right) / 2.0
+        delta_forward = self.fwd_wheel_size * (delta_left + delta_right) / 2.0
         delta_strafe = self.side_wheel_size * delta_side
 
         self.x, self.y, _ = self._calc_timestep_arc_chord(self.x, self.y, self.theta, delta_forward, delta_strafe, delta_theta)
@@ -703,12 +700,12 @@ class Tracking:
 
         while(True):
             values[0] = rotation_left.position(RotationUnits.REV)
-            values[1] = 0.0 if rotation_right is None else rotation_right.position(RotationUnits.REV)
+            values[1] = values[0] if rotation_right is None else rotation_right.position(RotationUnits.REV)
             values[2] = rotation_side.position(RotationUnits.REV)
             values[3] = Tracking.gyro_theta(inertial)
 
             timestamps[0] = rotation_left.timestamp()
-            timestamps[1] = 0 if rotation_right is None else rotation_right.timestamp()
+            timestamps[1] = timestamps[0] if rotation_right is None else rotation_right.timestamp()
             timestamps[2] = rotation_side.timestamp()
             timestamps[3] = inertial.timestamp()
 
