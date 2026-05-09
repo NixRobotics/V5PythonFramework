@@ -39,12 +39,12 @@ all_motors = [l1, l2, r1, r2]
 all_motor_names = ["l1", "l2", "r1", "r2"]
 
 # Inertial Sensor
-GYRO_SCALE_FOR_READOUT = 362.0/360.0
+GYRO_SCALE_FOR_READOUT = 361.5/360.0
 inertial = InertialWrapper(Ports.PORT5, GYRO_SCALE_FOR_READOUT)
 
 # Rotation Sensors
-rotation_fwd = Rotation(Ports.PORT6, False)
-rotation_strafe = Rotation(Ports.PORT7, False)
+rotation_fwd = Rotation(Ports.PORT10, False)
+rotation_strafe = Rotation(Ports.PORT7, True)
 all_sensors = [inertial, rotation_fwd, rotation_strafe]
 
 # ------------------------------------------------------------ #
@@ -79,7 +79,7 @@ USER_STARTED = False
 # Odometry / Tracking
 # ------------------------------------------------------------ #
 
-USING_TRACKING_WHEELS = False # sets the default tracker to use
+USING_TRACKING_WHEELS = True # sets the default tracker to use
 USING_RESAMPLING = False
 
 motor_tracker = None  # type: Tracking | None
@@ -118,10 +118,11 @@ def initialize_odom_tracker():
 
     # need to recalibrate these
     ODOMETRY_FWD_SIZE = 218.344 #219.70 from Remy
-    ODOMETRY_FWD_OFFSET = 0.0316 * 25.4
+    ODOMETRY_FWD_OFFSET = 0.0
     ODOMETRY_FWD_GEAR_RATIO = 1.0
     ODOMETRY_STRAFE_SIZE = 157.38
-    ODOMETRY_STRAFE_OFFSET = 115.0 # from pivot turn tests, this is more like 117.5mm
+    # FIXME: We want positive offset to the front of the robot
+    ODOMETRY_STRAFE_OFFSET = -115.0 # from pivot turn tests, this is more like 117.5mm
     ODOMETRY_STRAFE_GEAR_RATIO = 1.0
 
     tracker_configuration = Tracking.Configuration(
@@ -293,7 +294,7 @@ def drivetrain_max_speeds(motor_speed_rpm, wheel_size_mm, gear_ratio):
     return linear_speed, turn_speed
 
 def smart_drive_to_points(drivetrain: SmartDriveWrapper, tracker: Tracking):
-    print("auton4_drive_to_points_long")
+    print("smart_drive_to_points")
 
     drive_speed = 66 # PERCENT
     turn_speed = 66 # PERCENT
@@ -307,7 +308,7 @@ def smart_drive_to_points(drivetrain: SmartDriveWrapper, tracker: Tracking):
 
     print_tracker(tracker)
     
-    if False:
+    if True:
         # small test rectangle
         # field tiles are 601mm to 602mm across in reality
         # wheel size etc. are all calibrated assuming 600mm tiles
@@ -610,8 +611,8 @@ def smart_drive_tests(tracker: Tracking):
     drivetrain.set_turn_threshold(0.5) # DEGREES
     drivetrain.set_heading_lock_constants(Kp=1.25, Ki=0.0, Kd=0.0)
 
-    # smart_drive_to_points(drivetrain, tracker)
-    smart_turn_tests(drivetrain, tracker)
+    smart_drive_to_points(drivetrain, tracker)
+    # smart_turn_tests(drivetrain, tracker)
     # smart_drive_to_points_test(drivetrain, tracker)
     # smart_drive_stop_test(drivetrain, tracker)
     # smart_test_reverse(drivetrain, tracker)
@@ -829,9 +830,9 @@ def autonomous():
         raise RuntimeError("Tracker not initialized")
     tracker.enable()
 
-    drivetrain_tests()
+    # drivetrain_tests()
     # drive_proxy_tests(tracker)
-    # smart_drive_tests(tracker)
+    smart_drive_tests(tracker)
 
     free = gc.mem_free() # type: ignore
     print(free)
