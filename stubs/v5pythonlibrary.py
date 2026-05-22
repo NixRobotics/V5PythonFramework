@@ -867,7 +867,7 @@ class DriverControl:
         '''        
         pass
 
-    def user_drivetrain(self, control_speed, slow_turn_axis=0.0, fast_turn_axis=0.0):
+    def user_drivetrain(self, speed_axis, slow_turn_axis=0.0, fast_turn_axis=0.0, strafe_axis=0.0):
         '''
         ### USER DRIVETRAIN - main entry for user control. Should be called every 10ms
         
@@ -878,9 +878,10 @@ class DriverControl:
         The deadband logic may seem a bit convoluted, but it prevents the motor from being "stopped" every cycle
          - drivetrain_running is used as a flag so we only stop once until the controls move above the deadband again
 
-        :param control_speed: is raw controller forward / backwards speed in percent
-        :param control_slow_turn: is raw controller left / right speed in percent for the slow axis (this overrides fast axis)
-        :param control_fast_turn: is raw controller left / right speed in percent for the fast axis
+        :param speed_axis: is raw controller forward / backwards speed in percent
+        :param slow_turn_axis: is raw controller left / right speed in percent for the slow axis (this overrides fast axis)
+        :param fast_turn_axis: is raw controller left / right speed in percent for the fast axis
+        :param strafe_axis: is raw controller left / right speed in percent for strafing
 
         :returns: No return value
         '''
@@ -1043,13 +1044,10 @@ class Logger:
 # ------------------------------------------------------------------------------ #
 
 class XYPlotter:
-    def __init__(self, min_x=None, max_x=None, min_y=None, max_y=None):
+    def __init__(self, min_x=None, max_x=None, min_y=None, max_y=None, square_aspect=False, invert_y=False, invert_x=False):
         '''
-        Docstring for XYPlotter
-
-        Plot up to 3 x/y data series on the Brain's LCD screen
+        X and Y follow standard screen coordinates: (0,0) is top-left, X increases right, Y increases down.
         '''
-        
         pass
 
     def add_data_point_series1(self, x, y):
@@ -1061,10 +1059,13 @@ class XYPlotter:
     def add_data_point_series3(self, x, y):
         pass
 
-    def clear_data(self):
+    def clear_data(self, series=0):
         pass
 
     def draw_plot(self, screen: Brain.Lcd):
+        pass
+
+    def draw_overlay(self, screen: Brain.Lcd, x, y, size=1, color=Color.YELLOW):
         pass
 
 # ------------------------------------------------------------------------------ #

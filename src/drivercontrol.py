@@ -283,7 +283,7 @@ class DriverControl:
         if pivot_min_drive_speed is not None: self.pivot_min_drive_speed = pivot_min_drive_speed
         if full_turn_drive_speed is not None: self.full_turn_drive_speed = full_turn_drive_speed
 
-    def user_drivetrain(self, control_speed, slow_turn_axis=0.0, fast_turn_axis=0.0):
+    def user_drivetrain(self, speed_axis, slow_turn_axis=0.0, fast_turn_axis=0.0, strafe_axis=0.0):
         '''
         ### USER DRIVETRAIN - main entry for user control. Should be called every 10ms
         
@@ -294,17 +294,21 @@ class DriverControl:
         The deadband logic may seem a bit convoluted, but it prevents the motor from being "stopped" every cycle
          - drivetrain_running is used as a flag so we only stop once until the controls move above the deadband again
 
-        :param control_speed: is raw controller forward / backwards speed in percent
-        :param control_slow_turn: is raw controller left / right speed in percent for the slow axis (this overrides fast axis)
-        :param control_fast_turn: is raw controller left / right speed in percent for the fast axis
+        :param speed_axis: is raw controller forward / backwards speed in percent
+        :param slow_turn_axis: is raw controller left / right speed in percent for the slow axis (this overrides fast axis)
+        :param fast_turn_axis: is raw controller left / right speed in percent for the fast axis
+        :param strafe_axis: is raw controller left / right speed in percent for strafing
 
         :returns: No return value
         '''
         # calculate the drivetrain motor velocities from the controller joystick axes
+        control_speed = self.controller_deadband(speed_axis, DriverControl.MOTOR_DEADBAND)
+        strafe_speed = self.controller_deadband(strafe_axis, DriverControl.MOTOR_DEADBAND)
 
         # just in case - make sure there is no turn coming from the joystick unless we want it
         control_slow_turn = self.controller_deadband(slow_turn_axis, self.slow_turn_deadband)
         control_fast_turn = self.controller_deadband(fast_turn_axis, self.fast_turn_deadband)
+
         # deadband logic will keep output at zero until deadband exceeded
         if (control_slow_turn != 0.0):
             control_turn = control_slow_turn
@@ -315,7 +319,8 @@ class DriverControl:
 
         # Select auto follow heading mode if enabled and we are not commanded to turn, and are not waiting on a turn to finish
         # TODO: add case for when coasting to stop, but ramp control is still active
-        if (self.enable_heading_lock or (self.enable_drive_straight and (control_speed != 0.0 or self.last_speed != 0.0))) and control_turn == 0.0 and self.last_turn == 0.0:
+        drive_straight_condition = self.enable_drive_straight and (strafe_speed != 0.0 or control_speed != 0.0 or self.last_speed != 0.0)
+        if (self.enable_heading_lock or drive_straight_condition) and control_turn == 0.0 and self.last_turn == 0.0:
             detwitch_speed = control_speed * self.drive_max / 100.0
             auto_speed, auto_turn = self.drive_straight(detwitch_speed)
             safe_speed, _ = self.drivetrain_ramp_limit(auto_speed, 0, self.enable_ramp_control)
