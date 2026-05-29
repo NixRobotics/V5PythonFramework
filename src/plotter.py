@@ -23,10 +23,10 @@ class XYPlotter:
 
         # Data limits
         limit_set_count = 0
-        limits = [min_x, max_x, min_y, max_y]
-        for limit in limits:
-            if limit is not None:
-                limit_set_count += 1
+        if min_x is not None: limit_set_count += 1
+        if max_x is not None: limit_set_count += 1
+        if min_y is not None: limit_set_count += 1
+        if max_y is not None: limit_set_count += 1
         if (limit_set_count > 0) and (limit_set_count < 4):
             raise ValueError("Must set all limits or none for auto-scaling")
 
@@ -47,14 +47,17 @@ class XYPlotter:
     def add_data_point_series1(self, x, y):
         self.s1x.append(x)
         self.s1y.append(y)
+        self.update_limits(x, y)
 
     def add_data_point_series2(self, x, y):
         self.s2x.append(x)
         self.s2y.append(y)
+        self.update_limits(x, y)
 
     def add_data_point_series3(self, x, y):
         self.s3x.append(x)
         self.s3y.append(y)
+        self.update_limits(x, y)
 
     def clear_data(self, series=0):
         if series == 1 or series == 0:
@@ -63,6 +66,25 @@ class XYPlotter:
             self.s2x.clear(); self.s2y.clear()
         if series == 3 or series == 0:
             self.s3x.clear(); self.s3y.clear()
+
+        if series == 0:
+            self.reset_limits()
+
+    def update_limits(self, x, y):
+        if not self.auto_scale:
+            return
+        self.min_x = min(x, self.min_x)
+        self.max_x = max(x, self.max_x)
+        self.min_y = min(y, self.min_y)
+        self.max_y = max(y, self.max_y)
+
+    def reset_limits(self):
+        if not self.auto_scale:
+            return
+        self.min_x = 1
+        self.max_x = -1
+        self.min_y = 1
+        self.max_y = -1   
 
     # -----------------------------
     # Plotting
@@ -74,7 +96,7 @@ class XYPlotter:
             draw_circle(x,y,r,color),
             draw_line(x1,y1,x2,y2,color)
         """
-        self.update_limits()
+        self.update_scaling()
 
         screen.clear_screen()
 
@@ -91,32 +113,24 @@ class XYPlotter:
         self.draw_series(screen, self.s2x, self.s2y, Color.BLUE)
         self.draw_series(screen, self.s3x, self.s3y, Color.GREEN)
 
-    def draw_overlay(self, screen: Brain.Lcd, x, y, size=1, color=Color.YELLOW):
+    def draw_overlay(self, screen: Brain.Lcd, x, y, type="circle", size=1, color=Color.YELLOW):
         # Draw a circle over a data point (e.g. as a confidence interval)
         screen_x = self.data_to_screen_x(x)
         screen_y = self.data_to_screen_y(y)
         screen_size = int(size * (self.actual_width / self.data_x_range)) # Scale size based on data range and screen width
-        screen.draw_circle(screen_x, screen_y, screen_size, color)
+        if type == "circle":
+            screen.draw_circle(screen_x, screen_y, screen_size, color)
+        elif type == "square":
+            screen.draw_rectangle(screen_x - screen_size, screen_y - screen_size, screen_size * 2, screen_size * 2, color)
 
     # -----------------------------
     # Scaling and limits
     # -----------------------------
-    def update_limits(self):
-        if not self.auto_scale:
-            return
+    def update_scaling(self):
         
-        xs = self.s1x + self.s2x + self.s3x
-        ys = self.s1y + self.s2y + self.s3y
-
-        if not xs or not ys:
+        if self.min_x > self.max_x or self.min_y > self.max_y:
             self.min_x, self.max_x = 0, 100
             self.min_y, self.max_y = 0, 100
-            return
-
-        self.min_x = min(xs)
-        self.max_x = max(xs)
-        self.min_y = min(ys)
-        self.max_y = max(ys)
 
         # Avoid zero ranges
         if self.min_x == self.max_x:
@@ -126,7 +140,7 @@ class XYPlotter:
 
         # Data centering and normalization
         # - Data will be normalized to range of -0.5 to 0.5 before being expanded to screen dimensions
-        # - 0.0 be at the center of the appropriate axis
+        # - 0.0 will be at the center of the appropriate axis
         # - For square aspect ratio the smaller range will be padded to center the plot and the same range scaling is applied to both axes
         self.data_x_center = 0.0
         self.data_y_center = 0.0
@@ -146,22 +160,28 @@ class XYPlotter:
     def data_to_screen_x(self, x):
         plot_width = self.actual_width
         plot_x_center = self.margin_left + plot_width / 2
+        expansion = plot_width
+        if self.auto_scale and self.square_aspect:
+            expansion = min(self.actual_height, self.actual_height) # Use smaller dimension for square aspect ratio
 
         normalized = -0.5 + (x + self.data_x_center - self.min_x) / self.data_x_range
         if self.invert_x:
             normalized = -normalized
 
-        return int(plot_x_center + normalized * plot_width)
+        return int(plot_x_center + normalized * expansion)
 
     def data_to_screen_y(self, y):
         plot_height = self.actual_height
         plot_y_center = self.margin_top + plot_height / 2
+        expansion = plot_height
+        if self.auto_scale and self.square_aspect:
+            expansion = min(self.actual_height, self.actual_height) # Use smaller dimension for square aspect ratio
 
         normalized = -0.5 + (y + self.data_y_center - self.min_y) / self.data_y_range
         if self.invert_y:
             normalized = -normalized
 
-        return int(plot_y_center + normalized * plot_height)
+        return int(plot_y_center + normalized * expansion)
 
     # -----------------------------
     # Draw a series

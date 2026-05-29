@@ -1065,7 +1065,7 @@ class XYPlotter:
     def draw_plot(self, screen: Brain.Lcd):
         pass
 
-    def draw_overlay(self, screen: Brain.Lcd, x, y, size=1, color=Color.YELLOW):
+    def draw_overlay(self, screen: Brain.Lcd, x, y, type="circle", size=1, color=Color.YELLOW):
         pass
 
 # ------------------------------------------------------------------------------ #
