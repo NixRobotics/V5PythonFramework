@@ -36,10 +36,11 @@ class XYPlotter:
         self.square_aspect = square_aspect
         self.rotate = 0 # TODO: Set angle to rotate the plot (0, 90, 180, 270)
 
-        self.min_x = 1 if min_x is None else min_x
-        self.max_x = -1 if max_x is None else max_x
-        self.min_y = 1 if min_y is None else min_y
-        self.max_y = -1 if max_y is None else max_y
+        self.min_x = 0 if min_x is None else min_x
+        self.max_x = 0 if max_x is None else max_x
+        self.min_y = 0 if min_y is None else min_y
+        self.max_y = 0 if max_y is None else max_y
+        self.limits_set = not self.auto_scale
 
     # -----------------------------
     # Data input
@@ -73,6 +74,11 @@ class XYPlotter:
     def update_limits(self, x, y):
         if not self.auto_scale:
             return
+        if (not self.limits_set):
+            self.min_x = self.max_x = x
+            self.min_y = self.max_y = y
+            self.limits_set = True
+            return
         self.min_x = min(x, self.min_x)
         self.max_x = max(x, self.max_x)
         self.min_y = min(y, self.min_y)
@@ -81,10 +87,11 @@ class XYPlotter:
     def reset_limits(self):
         if not self.auto_scale:
             return
-        self.min_x = 1
-        self.max_x = -1
-        self.min_y = 1
-        self.max_y = -1   
+        self.min_x = 0
+        self.max_x = 0
+        self.min_y = 0
+        self.max_y = 0
+        self.limits_set = False   
 
     # -----------------------------
     # Plotting
@@ -155,7 +162,7 @@ class XYPlotter:
                 self.data_y_center = (data_range - self.data_y_range) / 2
                 self.data_y_range = data_range
 
-        # print(self.min_x, self.max_x, self.min_y, self.max_y)
+        print(self.min_x, self.max_x, self.min_y, self.max_y)
 
     def data_to_screen_x(self, x):
         plot_width = self.actual_width
@@ -205,3 +212,4 @@ class XYPlotter:
                 screen.draw_line(prev_x, prev_y, sx, sy)
 
             prev_x, prev_y = sx, sy
+
