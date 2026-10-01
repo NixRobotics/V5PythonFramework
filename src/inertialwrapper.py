@@ -85,7 +85,10 @@ class InertialWrapper(Inertial):
         Used when you want to convert the raw rotation reading that can be in the range [-inf, +inf] \\
         to an absolute heading in the range [0, 360) degrees
         '''
-        return rotation % 360.0
+        # FIXME: Should we use heading = 0.0 or heading -= 360.0?
+        heading = rotation % 360.0
+        if heading >= 360.0: heading = 0.0
+        return heading
 
     @staticmethod
     def to_angle(rotation):
@@ -95,6 +98,7 @@ class InertialWrapper(Inertial):
         Used when you want to convert the raw rotation reading that can be in the range [-inf, +inf] \\
         to an absolute angle in the range (-180, 180] degrees
         '''
+        # FIXME: Check boundary condition when modulo operation results in exactly 360.0
         angle = rotation % 360.0
         if (angle > 180.0): angle -= 360.0
         return angle
