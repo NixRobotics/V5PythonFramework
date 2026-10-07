@@ -32,6 +32,7 @@ class MotorMonitor:
         self.motor_status = [MotorMonitor.MOTOR_STATUS_OK]  * len(allmotors)
         self.previous_motor_status = self.motor_status.copy()
         self.motor_status_names = ["OK", "NOT PRESENT", "OK FOR NOW", "WARM", "HOT"]
+        self.is_muted = False
         self.motor_monitor_refresh_UI = False
 
     def start(self):
@@ -39,6 +40,12 @@ class MotorMonitor:
         Docstring for start
         '''
         self.thread = Thread(self._motor_monitor_thread, (self.brain, self.allmotors, self.motor_names))
+
+    def mute(self, mute: bool = False):
+        '''
+        Docstring for mute
+        '''
+        self.is_muted = mute
 
     def refresh(self):
         '''
@@ -101,7 +108,7 @@ class MotorMonitor:
         while(True):
             is_changed, motor_error, motor_is_cool, motor_is_warm, motor_is_hot = monitor._get_motor_status()
             # only call UI routines if status has changed
-            if (is_changed or self.motor_monitor_refresh_UI):
+            if (not self.is_muted and (is_changed or self.motor_monitor_refresh_UI)):
                 monitor._monitor_UI(motor_error, motor_is_cool, motor_is_warm, motor_is_hot)
                 self.motor_monitor_refresh_UI = False
             wait(2, TimeUnits.SECONDS)
