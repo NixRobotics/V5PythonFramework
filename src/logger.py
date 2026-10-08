@@ -12,12 +12,13 @@ class Logger:
     MOTOR_GROUP = 2
     INERTIAL = 3
     ROTATION = 4
+    DISTANCE = 5
 
     DEFAULT_LENGTH = 1000
 
     def __init__(self,
                  brain: Brain,
-                 devices: List, headers: List,
+                 devices: List, headers: List, include_device_times = False,
                  data_headers: List | None = None, data_fields_callback: Callable | None = None,
                  max_length: int = -1, time_sec: int = -1,
                  rate_ms: int = 10,
@@ -78,6 +79,8 @@ class Logger:
         :type devices: List
         :param headers: List of strings that will be used as headers for each column of the .csv file, e.g. ["motor1", "inertial1"]
         :type headers: List
+        :param include_device_times: If True, include the timestamps for each device in the log
+        :type include_device_times: bool
         :param data_headers: List of strings for user-defined data fields to log, e.g. ["custom1", "custom2"]
         :type data_headers: List | None
         :param data_fields_callback: Callback function that returns a list of float values for the user-defined data fields as a tuple,
@@ -141,6 +144,7 @@ class Logger:
         self.headers = headers
         self.data_headers = data_headers
         self.data_fields_callback = data_fields_callback
+        self.include_device_times = include_device_times
 
         # figure out buffer lengths
         if max_length > 0:
@@ -161,7 +165,11 @@ class Logger:
 
         # pre-allocate data storage
         self.vdata = array.array('f', [0.0] * (self.rows * self.cols))
-        self.tdata = array.array('i', [0] * (self.rows * self.cols))
+        if self.include_device_times:
+            self.tdata = array.array('i', [0] * (self.rows * self.cols))
+        else:
+            # only include system time from brain
+            self.tdata = array.array('i', [0] * (self.rows))
         self.dfdata = array.array('f')  # Initialize empty
         if self.data_headers is not None and len(self.data_headers) > 0:
             if data_fields_callback is None:
@@ -177,8 +185,15 @@ class Logger:
 
         # header line for .csv file
         text_buffer = ""
-        header_line = ", ".join(ext for h in self.headers for ext in ("{}_value".format(h), "{}_time".format(h)) )
-        text_buffer += header_line
+
+        if self.include_device_times:
+            header_line = ", ".join(ext for h in self.headers for ext in ("{}_value".format(h), "{}_time".format(h)) )
+            text_buffer += header_line
+        else:
+            text_buffer += "sys_time, "
+            header_line = ", ".join("{}_value".format(h) for h in self.headers)
+            text_buffer += header_line
+
         if self.dfcols > 0 and self.data_headers is not None:
             text_buffer += ", "
             df_header_line = ", ".join(h for h in self.data_headers)
@@ -207,6 +222,8 @@ class Logger:
             # elif isinstance(device, MotorGroup):
             elif type(device) is MotorGroup:
                 self.types.append(Logger.MOTOR_GROUP)
+            elif isinstance(device, Distance):
+                self.types.append(Logger.DISTANCE)
             else:
                 raise ValueError("Unsupported device type")
 
@@ -264,10 +281,16 @@ class Logger:
         print("Logger: Printing logged data")
         for i in range(self.index):
             line = ""
+            if not self.include_device_times:
+                time = self.tdata[i]
+                line += "{}, ".format(time)
             for j in range(self.cols):
                 val = self.vdata[i * self.cols + j]
-                time = self.tdata[i * self.cols + j]
-                line += "{:.2f}, {}, ".format(val, time)
+                if self.include_device_times:
+                    time = self.tdata[i * self.cols + j]
+                    line += "{:.2f}, {}, ".format(val, time)
+                else:
+                    line += "{:.2f}, ".format(val)
             if self.dfcols > 0:
                 for k in range(self.dfcols):
                     dfval = self.dfdata[i * self.dfcols + k]
@@ -321,6 +344,9 @@ class Logger:
     def _read_rotation(self, rotation: Rotation):
         return rotation.position(DEGREES), rotation.timestamp()
 
+    def _read_distance(self, distance: Distance):
+        return distance.object_distance(MM), distance.timestamp()
+
     def _log_thread(self):
         print("Logger: Logging started")
         timer = Timer()
@@ -346,15 +372,22 @@ class Logger:
                         values[i], timestamps[i] = self._read_inertial(self.devices[i])
                     elif self.types[i] == Logger.ROTATION:
                         values[i], timestamps[i] = self._read_rotation(self.devices[i])
+                    elif self.types[i] == Logger.DISTANCE:
+                        values[i], timestamps[i] = self._read_distance(self.devices[i])
                     elif self.types[i] == Logger.MOTOR_GROUP:
                         values[i], timestamps[i] = self._read_motor_group(self.devices[i])
+
                     if timestamps[i] != last_timestamps[i]:
                         updated = True
 
                 if updated:
+                    if not self.include_device_times:
+                        self.tdata[self.index] = self.brain.timer.system()
+                        
                     for i in range(self.cols):
                         self.vdata[self.index * self.cols + i] = values[i]
-                        self.tdata[self.index * self.cols + i] = timestamps[i]
+                        if self.include_device_times:
+                            self.tdata[self.index * self.cols + i] = timestamps[i]
                         last_timestamps[i] = timestamps[i]
 
                     if self.dfcols > 0 and self.data_fields_callback is not None:
@@ -434,16 +467,25 @@ class Logger:
 
         pos = 0
         while (lines_to_write > 0):
+
+            if not self.include_device_times:
+                time =  self.tdata[read_index]
+                s = str(time)
+                pos = self._write_buffer(full_file_name, pos, s)
+                pos = self._write_buffer(full_file_name, pos, ',')
+                    
             for col in range(self.cols):
                 
                 val = self.vdata[read_index * self.cols + col]
                 s = str(val)
                 pos = self._write_buffer(full_file_name, pos, s)
-                pos = self._write_buffer(full_file_name, pos, ',')
 
-                time =  self.tdata[read_index * self.cols + col]
-                s = str(time)
-                pos = self._write_buffer(full_file_name, pos, s)
+                if self.include_device_times:
+                    pos = self._write_buffer(full_file_name, pos, ',')
+                    time =  self.tdata[read_index * self.cols + col]
+                    s = str(time)
+                    pos = self._write_buffer(full_file_name, pos, s)
+
                 if (col < self.cols - 1 or self.dfcols > 0):
                    pos = self._write_buffer(full_file_name, pos, ',')
                 else:
