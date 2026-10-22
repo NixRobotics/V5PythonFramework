@@ -198,6 +198,7 @@ class Logger:
             text_buffer += ", "
             df_header_line = ", ".join(h for h in self.data_headers)
             text_buffer += df_header_line
+        self.header_text = text_buffer
         text_buffer += "\n"
         self.header_buffer = bytearray(text_buffer, 'utf-8')
 
@@ -279,6 +280,7 @@ class Logger:
         :type rate: int
         '''
         print("Logger: Printing logged data")
+        print(self.header_text)
         for i in range(self.index):
             line = ""
             if not self.include_device_times:
@@ -288,9 +290,11 @@ class Logger:
                 val = self.vdata[i * self.cols + j]
                 if self.include_device_times:
                     time = self.tdata[i * self.cols + j]
-                    line += "{:.2f}, {}, ".format(val, time)
+                    line += "{:.2f}, {}".format(val, time)
                 else:
-                    line += "{:.2f}, ".format(val)
+                    line += "{:.2f}".format(val)
+                if j < self.cols - 1 or self.dfcols > 0:
+                    line += ", "
             if self.dfcols > 0:
                 for k in range(self.dfcols):
                     dfval = self.dfdata[i * self.dfcols + k]
